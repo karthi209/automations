@@ -19,5 +19,6 @@ Package: *
 Pin: origin packages.mozilla.org
 Pin-Priority: 1000
 ' | sudo tee /etc/apt/preferences.d/mozilla
+
 # update package list, and install the Firefox .deb package
 sudo apt-get update && sudo apt-get install firefox
