@@ -1,0 +1,62 @@
+---
+- name: Setup Kubernetes
+  hosts: all
+  become: true
+  tasks:
+    - name: Update and upgrade apt packages
+      become: true
+      apt:
+        upgrade: yes
+        update_cache: yes
+
+    - name: Add Dependencies
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+
+    - name: Download Kubernetes APT key
+      get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key
+        dest: /tmp/kubernetes-Release.key
+
+    - name: Add the Kubernetes APT key
+      apt_key:
+        file: /tmp/kubernetes-Release.key
+        state: present
+
+    - name: Clean up the downloaded key file
+      file:
+        path: /tmp/kubernetes-Release.key
+        state: absent
+
+    - name: Add Kubernetes APT repository to sources list
+      copy:
+        content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /"
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        mode: '0644'
+
+    - name: Update APT package cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install Kubernetes packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - kubectl
+        - kubeadm
+        - kubelet
+
+    - name: Hold Kubernetes packages at current version
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubectl
+        - kubeadm
+        - kubelet

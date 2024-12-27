@@ -1,0 +1,15 @@
+# This inventory file defines the hosts for the controller and node groups for local kubernetes cluster
+
+all:
+  vars:
+    ansible_user: karthi209
+    ansible_password: admin
+    ansible_become_password: admin
+  children:
+    controller:
+      hosts:
+        server:
+    node:
+      hosts:
+        node0:
+        node1:
