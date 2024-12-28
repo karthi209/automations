@@ -1,0 +1,45 @@
+---
+- name: Install Firefox from Mozilla repository
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Create directory for APT repository keys if it doesn't exist
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Install wget if not already installed
+      apt:
+        name: wget
+        state: present
+
+    - name: Import Mozilla APT repository signing key
+      get_url:
+        url: https://packages.mozilla.org/apt/repo-signing-key.gpg
+        dest: /etc/apt/keyrings/packages.mozilla.org.asc
+        mode: '0644'
+
+    - name: Add Mozilla APT repository to sources list
+      apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main"
+        state: present
+        filename: mozilla
+
+    - name: Configure APT to prioritize Mozilla repository
+      copy:
+        content: |
+          Package: *
+          Pin: origin packages.mozilla.org
+          Pin-Priority: 1000
+        dest: /etc/apt/preferences.d/mozilla
+        mode: '0644'
+
+    - name: Update APT package list
+      apt:
+        update_cache: yes
+
+    - name: Install Firefox
+      apt:
+        name: firefox
+        state: present
