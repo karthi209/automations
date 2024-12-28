@@ -1,0 +1,33 @@
+---
+- name: Install Terraform CLI
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Add HashiCorp GPG key
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+
+    - name: Add HashiCorp repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+        filename: hashicorp
+
+    - name: Update APT package cache
+      apt:
+        update_cache: yes
+
+    - name: Install Terraform CLI
+      apt:
+        name: terraform
+        state: latest
+
+    - name: Verify Terraform installation
+      command: terraform --version
+      register: terraform_version
+      changed_when: false
+
+    - name: Display Terraform version
+      debug:
+        msg: "Installed Terraform version: {{ terraform_version.stdout }}"

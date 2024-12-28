@@ -60,3 +60,15 @@
         - kubectl
         - kubeadm
         - kubelet
+
+    - name: Init kubeadm
+      command: kubeadm init --pod-network-cidr=192.168.0.1/16
+      args:
+      creates: /etc/kubernetes/admin.conf
+
+    - name: Setup kube config
+      delegate_to: server
+      shell: |
+        mkdir -p $HOME/.kube
+        sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config

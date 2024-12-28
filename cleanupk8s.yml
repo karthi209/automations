@@ -1,0 +1,53 @@
+---
+- name: Reset Kubernetes Cluster
+  hosts: all
+  become: yes
+  tasks:
+    - name: Run kubeadm reset
+      command: kubeadm reset --force
+      ignore_errors: yes
+    
+    - name: Remove Kubernetes configuration
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/etcd
+        - /var/lib/kubelet
+        - /etc/cni/net.d
+        - /var/lib/cni
+        - /etc/kubernetes/kubelet.conf
+        - /etc/kubernetes/pki/ca.crt
+
+    - name: Remove kubeconfig file for root user
+      file:
+        path: /root/.kube/config
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove kubeconfig file for karthi209 user
+      file:
+        path: /home/karthi209/.kube
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove iptables rules
+      command: iptables -F
+      ignore_errors: yes
+
+    - name: Remove iptables nat rules
+      command: iptables -t nat -F
+      ignore_errors: yes
+
+    - name: Remove iptables mangle rules
+      command: iptables -t mangle -F
+      ignore_errors: yes
+
+    - name: Remove any remaining CNI interfaces
+      command: ip link delete cali0
+      ignore_errors: yes
+
+    - name: Remove IPVS rules (if applicable)
+      command: ipvsadm --clear
+      ignore_errors: yes
