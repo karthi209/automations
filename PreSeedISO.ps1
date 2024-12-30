@@ -1,42 +1,42 @@
 <#
-.SYNOPSIS
-This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file to enable quick Debian setup.
-
-.DESCRIPTION
-This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file. Here's a brief overview of the script's purpose:
-
-Mount the Original ISO: 
-The script mounts the specified Debian ISO file (e.g., debian-12.5.0-amd64-netinst.iso) to a temporary drive letter.
-
-Check for Existing Drive Letter: 
-It verifies if the specified drive letter is already in use by another volume. If the drive letter is occupied, the script exits with an error.
-
-Copy ISO Contents: 
-Once the ISO is mounted, it copies all its contents to a temporary folder.
-
-Add Preseed Configuration: 
-The script adds a preseed configuration file (preseed.cfg) into the appropriate directory in the copied contents to automate the Debian installation process.
-
-Copy Required Boot Files: 
-It ensures that the required boot files (like isolinux.bin) are present, copying them from the mounted ISO if necessary.
-
-Create a New ISO: 
-Using oscdimg (from the Windows ADK), the script creates a new customized ISO with the preseed file integrated.
-
-Cleanup: 
-After creating the new ISO, it unmounts the original ISO and cleans up the temporary folder.
-
-.LICENSE
-This script is licensed under the MIT License (see LICENSE file).
-
-.AUTHOR
-Karthikeyan Manimaran (karthikeyan14june@gmail.com)
-
-.DATE
-Created on: 2024-12-30
-
-.USAGE
-Example usage: ./PreSeedISO.ps1
+# .SYNOPSIS
+# This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file to enable quick Debian setup.
+#
+# .DESCRIPTION
+# This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file. Here's a brief overview of the script's purpose:
+# 
+# - **Mount the Original ISO**: 
+#     The script mounts the specified Debian ISO file (e.g., debian-12.5.0-amd64-netinst.iso) to a temporary drive letter.
+# 
+# - **Check for Existing Drive Letter**: 
+#     It verifies if the specified drive letter is already in use by another volume. If the drive letter is occupied, the script exits with an error.
+# 
+# - **Copy ISO Contents**: 
+#     Once the ISO is mounted, it copies all its contents to a temporary folder.
+# 
+# - **Add Preseed Configuration**: 
+#     The script adds a preseed configuration file (`preseed.cfg`) into the appropriate directory in the copied contents to automate the Debian installation process.
+# 
+# - **Copy Required Boot Files**: 
+#     It ensures that the required boot files (like `isolinux.bin`) are present, copying them from the mounted ISO if necessary.
+# 
+# - **Create a New ISO**: 
+#     Using `oscdimg` (from the Windows ADK), the script creates a new customized ISO with the preseed file integrated.
+# 
+# - **Cleanup**: 
+#     After creating the new ISO, it unmounts the original ISO and cleans up the temporary folder.
+#
+# .LICENSE
+# This script is licensed under the MIT License (see LICENSE file).
+#
+# .AUTHOR
+# Karthikeyan Manimaran (karthikeyan14june@gmail.com)
+#
+# .DATE
+# Created on: 2024-12-30
+#
+# .USAGE
+# Example usage: `./PreSeedISO.ps1`
 #>
 
 Write-Host " "
