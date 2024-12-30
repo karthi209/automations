@@ -5,7 +5,7 @@
 .DESCRIPTION
     This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file. Here's a brief overview of the script's purpose:
 
-Mount the Original ISO: 
+    Mount the Original ISO: 
     The script mounts the specified Debian ISO file (e.g., debian-12.5.0-amd64-netinst.iso) to a temporary drive letter.
 
     Check for Existing Drive Letter: 
