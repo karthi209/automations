@@ -3,40 +3,45 @@
     This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file to enable quick Debian setup.
 
 .DESCRIPTION
-    This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file. Here's a brief overview of the script's purpose:
+    This PowerShell script automates the process of customizing a Debian installation ISO by adding a preseed configuration file. The script performs the following tasks:
+    - Mounts the specified Debian ISO file to a temporary drive letter.
+    - Copies all contents of the mounted ISO to a temporary folder.
+    - Adds a preseed configuration file (preseed.cfg) to the copied contents.
+    - Ensures that required boot files (like isolinux.bin) are copied from the ISO.
+    - Creates a new ISO using the Windows ADK’s oscdimg tool with the preseed file integrated.
+    - Cleans up temporary folders after the ISO is created.
 
-    Mount the Original ISO: 
-    The script mounts the specified Debian ISO file (e.g., debian-12.5.0-amd64-netinst.iso) to a temporary drive letter.
+.PARAMETER SourceISO
+    Specifies the path to the source Debian ISO file. Example: "C:\Path\to\debian-12.5.0-amd64-netinst.iso".
 
-    Check for Existing Drive Letter: 
-    It verifies if the specified drive letter is already in use by another volume. If the drive letter is occupied, the script exits with an error.
+.PARAMETER TempFolder
+    Specifies the temporary folder where the ISO contents will be copied. Example: "C:\Temp\ISO".
 
-    Copy ISO Contents: 
-    Once the ISO is mounted, it copies all its contents to a temporary folder.
-    
-    Add Preseed Configuration: 
-    The script adds a preseed configuration file (preseed.cfg) into the appropriate directory in the copied contents to automate the Debian installation process.
-    
-    Copy Required Boot Files: 
-    It ensures that the required boot files (like isolinux.bin) are present, copying them from the mounted ISO if necessary.
-    
-    Create a New ISO: 
-    Using oscdimg (from the Windows ADK), the script creates a new customized ISO with the preseed file integrated.
-    
-    Cleanup: 
-    After creating the new ISO, it unmounts the original ISO and cleans up the temporary folder.
+.PARAMETER OutputISO
+    Specifies the output path where the new ISO will be saved. Example: "C:\Output\debian-preseed.iso".
 
-.LICENSE
-    This script is licensed under the MIT License (see LICENSE file).
+.PARAMETER PreseedFile
+    Specifies the path to the preseed configuration file (preseed.cfg). Example: "C:\Path\to\preseed.cfg".
 
-.AUTHOR
-    Karthikeyan Manimaran (karthikeyan14june@gmail.com)
+.PARAMETER MountedVolumeLetter
+    Specifies the drive letter to use for mounting the ISO. Example: "E".
 
-.DATE
-    Created on: 2024-12-30
+.EXAMPLE
+    .\CustomizeDebianISO.ps1 -SourceISO "C:\ISOs\debian-12.5.0-amd64-netinst.iso" -TempFolder "C:\Temp\DebianISO" -OutputISO "C:\Output\debian-custom.iso" -PreseedFile "C:\Configs\preseed.cfg" -MountedVolumeLetter "E"
+    This will mount the Debian ISO, copy its contents, add the preseed.cfg file, and create a new ISO with the preseed configuration.
 
-.USAGE
-    Example usage: ./PreSeedISO.ps1
+.EXAMPLE
+    .\CustomizeDebianISO.ps1 -SourceISO "C:\ISOs\debian-12.5.0-amd64-netinst.iso" -TempFolder "C:\Temp\DebianISO" -OutputISO "C:\Output\debian-custom.iso" -PreseedFile "C:\Configs\preseed.cfg" -MountedVolumeLetter "D"
+    This will mount the Debian ISO on drive D:, add the preseed.cfg, and create a new ISO.
+
+.NOTES
+    NAME:    CustomizeDebianISO.ps1
+    AUTHOR:  Karthikeyan Manimaran
+    DATE:    2024/12/30
+    LICENSE: MIT License
+    VERSION HISTORY:
+        1.0 2024/12/30 - Initial Version
+
 #>
 
 Write-Host " "
