@@ -27,3 +27,8 @@ jobs:
         run: |
           python test_docker_image.py $IMAGE_NAME \
             --test-files test_installations.py:/test_installations.py tools_expected.json:/tools_expected.json
+
+
+  python test_docker_image.py your-image-name:tag \
+  --test-files test_installations.py:/test_installations.py tools_expected.json:/tools_expected.json
+
