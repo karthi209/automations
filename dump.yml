@@ -3,32 +3,23 @@
 FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
 
 if [ -f "$FILE" ]; then
-    echo "Updating integration test results in $FILE"
-    # Save original content for comparison
-    cp "$FILE" "$FILE.orig"
-    
+    echo "Replacing integration test results in $FILE"
     awk -v new_results="${{ env.results }}" '
-        /^# Integration Test Results/ {
-            print;
-            print new_results;
-            in_section = 1;
-            next;
-        }
-        /^#/ {
-            in_section = 0;
-            print;
-            next;
-        }
-        !in_section {
-            print;
-        }
-    ' "$FILE" > temp.md
-    mv temp.md "$FILE"
+    BEGIN { in_integration = 0 }
+    /^# Integration Test Results/ { 
+        print;
+        print new_results;
+        in_integration = 1;
+        next;
+    }
+    /^#/ && in_integration { 
+        in_integration = 0 
+    }
+    !in_integration { print }
+    ' "$FILE" > temp.md && mv temp.md "$FILE"
     
-    # Check if content actually changed
-    if ! cmp -s "$FILE" "$FILE.orig"; then
-        echo "Changes detected, proceeding with commit"
-        rm "$FILE.orig"
+    # Check if changes were made
+    if [ -n "$(git status -s "$FILE")" ]; then
         cd wiki
         git config user.name "${{ github.actor }}"
         git config user.email "${{ github.actor }}@users.noreply.github.com"
@@ -36,11 +27,11 @@ if [ -f "$FILE" ]; then
         git commit -m "Update integration test results in v$NEXT_TAG"
         git push
     else
-        echo "No changes detected in content, skipping commit"
-        rm "$FILE.orig"
+        echo "No changes detected in content"
     fi
 else
     echo "Creating new file: $FILE"
+    mkdir -p "$(dirname "$FILE")"
     echo "# Integration Test Results" > "$FILE"
     echo "${{ env.results }}" >> "$FILE"
     
@@ -51,3 +42,7 @@ else
     git commit -m "Update integration test results in v$NEXT_TAG"
     git push
 fi
+
+# Debug: Show final content
+echo "Final content of $FILE:"
+cat "$FILE"
