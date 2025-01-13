@@ -18,10 +18,12 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install dependencies
+      - name: Install Docker Python SDK
         run: pip install docker
 
       - name: Run Test Script
         env:
-          DOCKER_IMAGE: your-image-name:tag
-        run: python test_docker_images.py
+          IMAGE_NAME: your-image-name:tag
+        run: |
+          python test_docker_image.py $IMAGE_NAME \
+            --test-files test_installations.py:/test_installations.py tools_expected.json:/tools_expected.json
