@@ -1,5 +1,4 @@
 import subprocess
-import json
 import os
 import sys
 import time
@@ -8,8 +7,8 @@ DOCKER_OUTPUT_FILE = "/output/test_results.json"
 HOST_OUTPUT_FILE = "test_results.json"
 EXPECTED_VALUES_FILE = "expected_values.json"
 
-def run_docker_tests(image_name, test_scripts, expected_values_file):
-    """Run all tests inside a Docker container."""
+def run_docker_tests(image_name):
+    """Run tests inside a Docker container."""
     # Generate a unique container name
     container_name = f"test-container-{int(time.time())}"
     
@@ -24,17 +23,15 @@ def run_docker_tests(image_name, test_scripts, expected_values_file):
             "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
         ])
         
-        # Copy test scripts and the source of truth file into the container
+        # Copy the test folder and source of truth JSON into the container
         print("Copying test files into the container...")
-        os.makedirs("output", exist_ok=True)  # Ensure output directory exists
-        for script in test_scripts:
-            subprocess.check_call(["docker", "cp", script, f"{container_name}:/test_tools/"])
-        subprocess.check_call(["docker", "cp", expected_values_file, f"{container_name}:/test_tools/"])
+        subprocess.check_call(["docker", "cp", "test_tools", f"{container_name}:/test_tools"])
+        subprocess.check_call(["docker", "cp", EXPECTED_VALUES_FILE, f"{container_name}:/test_tools/"])
 
-        # Run the test manager script inside the container
+        # Run the master test script inside the container
         print("Running tests inside the Docker container...")
         subprocess.check_call([
-            "docker", "exec", container_name, "python3", "/test_tools/test_tools.py"
+            "docker", "exec", container_name, "python3", "/test_tools/run_tests.py"
         ])
 
         # Copy the results back to the host
@@ -59,23 +56,14 @@ if __name__ == "__main__":
         sys.exit(1)
 
     image_name = sys.argv[1]  # Docker image name
-    test_scripts = [
-        "test_tools/test_python3.py",
-        "test_tools/test_maven.py",
-        "test_tools/test_curl.py",
-        "test_tools/test_tools.py"
-    ]
-    expected_values_file = EXPECTED_VALUES_FILE
-
-    run_docker_tests(image_name, test_scripts, expected_values_file)
+    run_docker_tests(image_name)
 
 
 
 
-
-import subprocess
-import json
 import os
+import json
+import subprocess
 
 OUTPUT_FILE = "/output/test_results.json"
 EXPECTED_VALUES_FILE = "/test_tools/expected_values.json"
@@ -89,34 +77,13 @@ def load_expected_values():
         print(f"Error loading expected values: {e}")
         return {}
 
-def write_results_to_file(results):
-    """Write test results to a JSON file."""
-    os.makedirs("/output", exist_ok=True)
-    with open(OUTPUT_FILE, "w") as f:
-        json.dump(results, f, indent=4)
-
-def run_individual_tests(test_scripts):
-    """Run individual tool tests and consolidate results."""
-    results = {}
-    expected_values = load_expected_values()
-
-    for script in test_scripts:
-        tool_name = os.path.basename(script).replace("test_", "").replace(".py", "").capitalize()
-        print(f"Running tests for {tool_name}...")
-        try:
-            output = subprocess.check_output(["python3", script]).decode("utf-8")
-            tool_results = json.loads(output)
-
-            # Compare results with expected values
-            comparison = compare_results_with_expected(tool_name, tool_results, expected_values)
-            results[tool_name] = {
-                "Results": tool_results,
-                "Comparison": comparison
-            }
-        except Exception as e:
-            results[tool_name] = {"Error": str(e)}
-
-    return results
+def run_test_script(script_path):
+    """Run an individual test script and return its output."""
+    try:
+        output = subprocess.check_output(["python3", script_path]).decode("utf-8")
+        return json.loads(output)
+    except Exception as e:
+        return {"Error": str(e)}
 
 def compare_results_with_expected(tool_name, results, expected_values):
     """Compare actual results with expected values."""
@@ -125,27 +92,79 @@ def compare_results_with_expected(tool_name, results, expected_values):
         expected = expected_values[tool_name]
         for key, value in results.items():
             expected_key = f"Expected {key}"
-            if expected_key in expected:
-                comparison[key] = {
-                    "Actual": value,
-                    "Expected": expected[expected_key],
-                    "Match": value == expected[expected_key]
-                }
-            else:
-                comparison[key] = {
-                    "Actual": value,
-                    "Expected": "Not defined in source of truth",
-                    "Match": "Unknown"
-                }
+            comparison[key] = {
+                "Actual": value,
+                "Expected": expected.get(expected_key, "Not defined"),
+                "Match": value == expected.get(expected_key)
+            }
     else:
-        comparison["Error"] = f"No expected values defined for {tool_name}"
+        comparison["Error"] = "No expected values defined for this tool"
     return comparison
 
+def main():
+    """Run all tool tests and generate a consolidated report."""
+    expected_values = load_expected_values()
+    results = {}
+    
+    # Run each tool test script in the `test_tools` directory
+    for script in os.listdir("/test_tools"):
+        if script.startswith("test_") and script.endswith(".py") and script != "run_tests.py":
+            tool_name = script.replace("test_", "").replace(".py", "").capitalize()
+            print(f"Testing {tool_name}...")
+            tool_results = run_test_script(f"/test_tools/{script}")
+            comparison = compare_results_with_expected(tool_name, tool_results, expected_values)
+            results[tool_name] = {
+                "Results": tool_results,
+                "Comparison": comparison
+            }
+
+    # Write results to the output file
+    os.makedirs("/output", exist_ok=True)
+    with open(OUTPUT_FILE, "w") as f:
+        json.dump(results, f, indent=4)
+
 if __name__ == "__main__":
-    test_scripts = [
-        "/test_tools/test_python3.py",
-        "/test_tools/test_maven.py",
-        "/test_tools/test_curl.py",
-    ]
-    results = run_individual_tests(test_scripts)
-    write_results_to_file(results)
+    main()
+
+
+
+{
+    "Python3": {
+        "Expected Version": "3.8.10",
+        "Expected Installation Path": "/usr/bin/python3",
+        "Expected Symlink": "python3 -> /usr/bin/python3.8"
+    },
+    "Maven": {
+        "Expected Version": "3.6.3",
+        "Expected Installation Path": "/usr/bin/mvn",
+        "Expected Symlink": "mvn -> /usr/share/maven/bin/mvn"
+    }
+}
+
+
+
+import subprocess
+import json
+
+def main():
+    try:
+        version = subprocess.check_output(["python3", "--version"]).decode("utf-8").strip()
+        path = subprocess.check_output(["which", "python3"]).decode("utf-8").strip()
+        symlink = subprocess.check_output(["ls", "-l", path]).decode("utf-8").strip()
+        
+        # Functionality test
+        functionality_test = subprocess.check_output(["python3", "-c", "print('Hello, World!')"]).decode("utf-8").strip()
+        
+        results = {
+            "Version": version.split()[1],
+            "Installation Path": path,
+            "Symlink": symlink,
+            "Functionality Test": functionality_test
+        }
+    except Exception as e:
+        results = {"Error": str(e)}
+
+    print(json.dumps(results))
+
+if __name__ == "__main__":
+    main()
