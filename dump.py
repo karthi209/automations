@@ -2,17 +2,34 @@ import argparse
 import docker
 import os
 import sys
+import tarfile
+from io import BytesIO
+
+def create_tar_from_file(src_path):
+    """Create a tar archive from the given file."""
+    tar_stream = BytesIO()
+    with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+        arcname = os.path.basename(src_path)
+        tar.add(src_path, arcname=arcname)
+    tar_stream.seek(0)
+    return tar_stream
 
 def copy_file_to_container(container, src_path, dest_path):
     """Copy a file to the running container."""
-    with open(src_path, 'rb') as file_data:
-        # Create a tar stream for the file
-        tar_data = docker.utils.tar({
-            os.path.basename(dest_path): file_data.read()
-        })
-        
-        # Put the archive (tar data) into the container
-        container.put_archive(os.path.dirname(dest_path), tar_data)
+    # Make sure the file exists
+    if not os.path.isfile(src_path):
+        raise Exception(f"Source file {src_path} does not exist")
+    
+    # Create tar stream for the file
+    tar_stream = create_tar_from_file(src_path)
+    
+    # Put the tar stream in the container at the specified path
+    try:
+        print(f"Copying {src_path} to {dest_path}")
+        container.put_archive(os.path.dirname(dest_path), tar_stream)
+    except Exception as e:
+        print(f"Error copying file {src_path} to container: {e}")
+        sys.exit(1)
 
 def run_tests_in_image(image_name, test_files):
     """Run test scripts inside the specified Docker image."""
@@ -24,7 +41,7 @@ def run_tests_in_image(image_name, test_files):
         print(f"Starting container for image: {image_name}")
         container = client.containers.run(
             image_name,
-            command="tail -f /dev/null",
+            command="tail -f /dev/null",  # Keep the container running
             detach=True,
         )
 
