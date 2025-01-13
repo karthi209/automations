@@ -1,90 +1,69 @@
-import argparse
-import docker
+import subprocess
+import json
 import os
-import sys
-import tarfile
-from io import BytesIO
 
-def create_tar_from_file(src_path):
-    """Create a tar archive from the given file."""
-    tar_stream = BytesIO()
-    with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-        arcname = os.path.basename(src_path)
-        tar.add(src_path, arcname=arcname)
-    tar_stream.seek(0)
-    return tar_stream
-
-def copy_file_to_container(container, src_path, dest_path):
-    """Copy a file to the running container."""
-    # Make sure the file exists
-    if not os.path.isfile(src_path):
-        raise Exception(f"Source file {src_path} does not exist")
-    
-    # Create tar stream for the file
-    tar_stream = create_tar_from_file(src_path)
-    
-    # Put the tar stream in the container at the specified path
+def get_version(tool):
+    """Get the version of the tool by running '<tool> --version'."""
     try:
-        print(f"Copying {src_path} to {dest_path}")
-        container.put_archive(os.path.dirname(dest_path), tar_stream)
-    except Exception as e:
-        print(f"Error copying file {src_path} to container: {e}")
-        sys.exit(1)
+        version = subprocess.check_output([tool, "--version"], stderr=subprocess.STDOUT)
+        return version.decode().strip()
+    except subprocess.CalledProcessError:
+        return f"{tool} version check failed"
 
-def run_tests_in_image(image_name, test_files):
-    """Run test scripts inside the specified Docker image."""
-    client = docker.from_env()
+def get_installation_path(tool):
+    """Get the installation path of the tool by running 'which <tool>'."""
     try:
-        print(f"Pulling image: {image_name}")
-        client.images.pull(image_name)
+        path = subprocess.check_output(["which", tool], stderr=subprocess.STDOUT)
+        return path.decode().strip()
+    except subprocess.CalledProcessError:
+        return f"{tool} installation path not found"
 
-        print(f"Starting container for image: {image_name}")
-        container = client.containers.run(
-            image_name,
-            command="tail -f /dev/null",  # Keep the container running
-            detach=True,
-        )
+def get_symlink_target(tool):
+    """Check if the tool is a symlink and return the target path."""
+    try:
+        target = os.readlink(tool) if os.path.islink(tool) else None
+        return target if target else f"{tool} is not a symlink"
+    except Exception:
+        return f"{tool} symlink check failed"
 
-        try:
-            # Copy each test file from local to container
-            for local_path, container_path in test_files.items():
-                print(f"Copying {local_path} to {container_path} in container")
-                copy_file_to_container(container, local_path, container_path)
+def test_tool(tool, expected_tool_info):
+    """Test the tool by checking version, installation path, and symlink."""
+    tool_info = {
+        "tool": tool,
+        "version": get_version(tool),
+        "install_path": get_installation_path(tool),
+        "symlink": get_symlink_target(tool),
+    }
 
-            print("Running test script inside container...")
-            exit_code, output = container.exec_run("python3 /test_installations.py")
-            print(output.decode())
-            if exit_code != 0:
-                raise Exception("Test script failed.")
-        finally:
-            print(f"Stopping container for image: {image_name}")
-            container.stop()
-            container.remove()
+    # Log the results
+    print(f"Results for {tool}:")
+    print(f"  Version: {tool_info['version']}")
+    print(f"  Installation Path: {tool_info['install_path']}")
+    print(f"  Symlink: {tool_info['symlink']}")
 
-    except Exception as e:
-        print(f"Error testing image {image_name}: {e}")
-        sys.exit(1)
+    # Check against expected values if provided
+    if expected_tool_info:
+        if "version" in expected_tool_info and expected_tool_info["version"] != tool_info["version"]:
+            print(f"  Version mismatch for {tool}: Expected {expected_tool_info['version']}, got {tool_info['version']}")
+        if "install_path" in expected_tool_info and expected_tool_info["install_path"] != tool_info["install_path"]:
+            print(f"  Path mismatch for {tool}: Expected {expected_tool_info['install_path']}, got {tool_info['install_path']}")
+        if "symlink" in expected_tool_info and expected_tool_info["symlink"] != tool_info["symlink"]:
+            print(f"  Symlink mismatch for {tool}: Expected {expected_tool_info['symlink']}, got {tool_info['symlink']}")
+
+    return tool_info
 
 def main():
-    parser = argparse.ArgumentParser(description="Test Docker image installations.")
-    parser.add_argument("image", help="The Docker image to test.")
-    parser.add_argument(
-        "--test-files", 
-        nargs="+", 
-        help="List of test files to copy into the container in the format 'local_path:container_path'.",
-        required=True
-    )
-    args = parser.parse_args()
+    # Load expected tool info from JSON
+    try:
+        with open('/tools_expected.json', 'r') as f:
+            tools_expected = json.load(f)
+    except FileNotFoundError:
+        print("Expected tools file '/tools_expected.json' not found.")
+        return
 
-    # Parse test files into a dictionary
-    test_files = {}
-    for pair in args.test_files:
-        local, container = pair.split(":")
-        test_files[local] = container
-
-    # Run tests
-    run_tests_in_image(args.image, test_files)
-
+    # Test each tool listed in the JSON
+    for tool, expected_info in tools_expected.items():
+        test_tool(tool, expected_info)
 
 if __name__ == "__main__":
     main()
