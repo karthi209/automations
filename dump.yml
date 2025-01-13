@@ -3,12 +3,15 @@
 FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
 RESULTS="${{ env.results }}"
 
+# Escape special characters for sed
+ESCAPED_RESULTS=$(printf '%s' "$RESULTS" | sed -e 's/[&/\]/\\&/g')
+
 if [ -f "$FILE" ]; then
     # Check if section exists
     if grep -q "^# Integration Test Results" "$FILE"; then
         # Section exists - replace content between this header and next header
-        sed -i -e '/^# Integration Test Results/,/^# /{/^# Integration Test Results/{p;d};/^# /q;d}' \
-               -e "/^# Integration Test Results/a $RESULTS" "$FILE"
+        sed -i -e "/^# Integration Test Results/,/^# /{/^# Integration Test Results/{p;d};/^# /q;d}" \
+               -e "/^# Integration Test Results/a $ESCAPED_RESULTS" "$FILE"
     else
         # Section doesn't exist - append to end of file
         echo -e "\n# Integration Test Results\n$RESULTS" >> "$FILE"
