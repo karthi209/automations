@@ -1,0 +1,55 @@
+name: Generate Visualization and Add to Summary
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  visualize:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install matplotlib
+
+    - name: Generate Visualization
+      run: |
+        python - <<EOF
+        import matplotlib.pyplot as plt
+
+        # Example data for the visualization
+        test_names = ['Test A', 'Test B', 'Test C', 'Test D']
+        test_results = [90, 75, 85, 95]
+
+        # Generate a bar chart
+        plt.figure(figsize=(8, 6))
+        plt.bar(test_names, test_results, color='skyblue')
+        plt.title('Test Results')
+        plt.xlabel('Tests')
+        plt.ylabel('Scores')
+        plt.ylim(0, 100)
+        plt.savefig('test_results_chart.png')  # Save chart as an image
+        EOF
+
+    - name: Upload Visualization as Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-chart
+        path: test_results_chart.png
+
+    - name: Serve Visualization in Summary
+      run: |
+        IMAGE_URL="https://raw.githubusercontent.com/<YOUR_REPO>/<BRANCH>/path/to/test_results_chart.png"
+        echo "## Test Results Visualization" >> $GITHUB_STEP_SUMMARY
+        echo "![Test Results Chart](${IMAGE_URL})" >> $GITHUB_STEP_SUMMARY
