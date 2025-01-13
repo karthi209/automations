@@ -1,19 +1,21 @@
 #!/bin/bash
 
 FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
+RESULTS="${{ env.results }}"
 
 if [ -f "$FILE" ]; then
     # Check if section exists
     if grep -q "^# Integration Test Results" "$FILE"; then
         # Section exists - replace content between this header and next header
-        sed -i '/^# Integration Test Results/,/^# /c\# Integration Test Results\n'"${{ env.results }}"'\n' "$FILE"
+        sed -i -e '/^# Integration Test Results/,/^# /{/^# Integration Test Results/{p;d};/^# /q;d}' \
+               -e "/^# Integration Test Results/a $RESULTS" "$FILE"
     else
         # Section doesn't exist - append to end of file
-        echo -e "\n# Integration Test Results\n${{ env.results }}" >> "$FILE"
+        echo -e "\n# Integration Test Results\n$RESULTS" >> "$FILE"
     fi
 else
     # File doesn't exist - create new
-    echo -e "# Integration Test Results\n${{ env.results }}" > "$FILE"
+    echo -e "# Integration Test Results\n$RESULTS" > "$FILE"
 fi
 
 # Commit if there are changes
@@ -21,5 +23,5 @@ cd wiki
 git config user.name "${{ github.actor }}"
 git config user.email "${{ github.actor }}@users.noreply.github.com"
 git add "$FILE"
-git commit -m "Update integration test results in v$NEXT_TAG" || echo "No changes to commit"
+git commit -m "Update integration test results in v${{ env.NEXT_TAG }}" || echo "No changes to commit"
 git push
