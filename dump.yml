@@ -1,49 +1,53 @@
 #!/bin/bash
 
-# First part remains the same
-echo "*results<<EOF" >> $GITHUB_ENV
-echo "$RESULTS" >> $GITHUB_ENV
-echo "EOF" >> $GITHUB_ENV
+FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
 
-name: Push report to wiki
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  TAG: ${{ env.TAG }}
-  NEXT_TAG: ${{ env.NEXT_TAG }}
-  INTEGRATION_RESULTS: ${{ env.results }}
-run: |
-  git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.kp.org/${{ github.repository }}.wiki.git wiki
-  ls -la wiki
-  
-  # Path to the file
-  FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
-  
-  # Replace the Integration Test Results section
-  if [ -f "$FILE" ]; then
+if [ -f "$FILE" ]; then
     echo "Updating integration test results in $FILE"
+    # Save original content for comparison
+    cp "$FILE" "$FILE.orig"
+    
     awk -v new_results="${{ env.results }}" '
-      BEGIN { in_integration = 0; printed = 0 }
-      /^# Integration Test Results/ { 
-        if (!printed) {
-          print $0
-          print new_results
-          printed = 1
+        /^# Integration Test Results/ {
+            print;
+            print new_results;
+            in_section = 1;
+            next;
         }
-        in_integration = 1
-        next
-      }
-      /^#/ { in_integration = 0 }
-      !in_integration { print }
-    ' "$FILE" > temp.md && mv temp.md "$FILE"
-  else
-    echo "Creating new test results file"
+        /^#/ {
+            in_section = 0;
+            print;
+            next;
+        }
+        !in_section {
+            print;
+        }
+    ' "$FILE" > temp.md
+    mv temp.md "$FILE"
+    
+    # Check if content actually changed
+    if ! cmp -s "$FILE" "$FILE.orig"; then
+        echo "Changes detected, proceeding with commit"
+        rm "$FILE.orig"
+        cd wiki
+        git config user.name "${{ github.actor }}"
+        git config user.email "${{ github.actor }}@users.noreply.github.com"
+        git add "$FILE"
+        git commit -m "Update integration test results in v$NEXT_TAG"
+        git push
+    else
+        echo "No changes detected in content, skipping commit"
+        rm "$FILE.orig"
+    fi
+else
+    echo "Creating new file: $FILE"
     echo "# Integration Test Results" > "$FILE"
     echo "${{ env.results }}" >> "$FILE"
-  fi
-  
-  cd wiki
-  git config user.name "${{ github.actor }}"
-  git config user.email "${{ github.actor }}@users.noreply.github.com"
-  git add .
-  git commit -m "Update integration test results in v$NEXT_TAG"
-  git push
+    
+    cd wiki
+    git config user.name "${{ github.actor }}"
+    git config user.email "${{ github.actor }}@users.noreply.github.com"
+    git add "$FILE"
+    git commit -m "Update integration test results in v$NEXT_TAG"
+    git push
+fi
