@@ -1,91 +1,4 @@
 import subprocess
-import os
-import re
-
-def test_maven():
-    tool_command = "mvn"
-    version_regex = r"(?<=Maven )\d+\.\d+\.\d+"
-
-    try:
-        version_output = subprocess.check_output([tool_command, "--version"], stderr=subprocess.STDOUT).decode()
-        match = re.search(version_regex, version_output)
-        if match:
-            version = match.group(0)
-        else:
-            version = "Version not found using regex"
-        
-        install_path = subprocess.check_output(["which", tool_command], stderr=subprocess.STDOUT).decode().strip()
-        symlink = "No symlink"  # Add symlink logic if necessary
-        
-        return {
-            "tool": "maven",
-            "version": version,
-            "install_path": install_path,
-            "symlink": symlink
-        }
-    except subprocess.CalledProcessError:
-        return {"tool": "maven", "version": "not installed", "install_path": "not found", "symlink": "not found"}
-
-
-
-
-import subprocess
-import os
-
-def test_curl():
-    tool_command = "curl"
-    try:
-        version_output = subprocess.check_output([tool_command, "--version"], stderr=subprocess.STDOUT).decode()
-        version = version_output.strip()
-        install_path = subprocess.check_output(["which", tool_command], stderr=subprocess.STDOUT).decode().strip()
-        symlink = "No symlink"  # Add symlink logic if necessary
-        
-        return {
-            "tool": "curl",
-            "version": version,
-            "install_path": install_path,
-            "symlink": symlink
-        }
-    except subprocess.CalledProcessError:
-        return {"tool": "curl", "version": "not installed", "install_path": "not found", "symlink": "not found"}
-
-
-
-
-
-import json
-import os
-from test_python3 import test_python3
-from test_maven import test_maven
-from test_curl import test_curl
-
-def main():
-    tools_info = []
-    
-    # Run each tool test
-    tools_info.append(test_python3())
-    tools_info.append(test_maven())
-    tools_info.append(test_curl())
-
-    # Write the results to a JSON file
-    with open('/tool_test_results.json', 'w') as f:
-        json.dump(tools_info, f, indent=4)
-
-    # Print the results
-    for tool_info in tools_info:
-        print(f"Results for {tool_info['tool']}:")
-        print(f"  Version: {tool_info['version']}")
-        print(f"  Installation Path: {tool_info['install_path']}")
-        print(f"  Symlink: {tool_info['symlink']}")
-
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-import subprocess
 import sys
 import os
 import time
@@ -116,7 +29,6 @@ def run_docker_container(image_name, test_files):
             "docker", "exec", container_name, "python3", "/test_tools/test_tools.py"
         ])
 
-        # Capture the results
         print("Test completed.")
         
     except subprocess.CalledProcessError as e:
@@ -137,3 +49,69 @@ if __name__ == "__main__":
         "test_tools/test_tools.py": "/test_tools/test_tools.py",
     }
     run_docker_container(image_name, test_files)
+
+
+
+
+
+import subprocess
+
+def test_python3():
+    # Check the version of Python
+    version = subprocess.check_output(["python3", "--version"]).decode("utf-8").strip()
+    print(f"Python version: {version}")
+
+    # Check installation path
+    install_path = subprocess.check_output(["which", "python3"]).decode("utf-8").strip()
+    print(f"Python installation path: {install_path}")
+
+    # Check if it's a symlink
+    symlink = subprocess.check_output(["ls", "-l", "/usr/bin/python3"]).decode("utf-8").strip()
+    print(f"Python symlink info: {symlink}")
+
+if __name__ == "__main__":
+    test_python3()
+
+
+
+
+
+import subprocess
+
+def test_maven():
+    # Check Maven version
+    version = subprocess.check_output(["mvn", "--version"]).decode("utf-8").strip()
+    print(f"Maven version: {version}")
+
+    # Check installation path
+    install_path = subprocess.check_output(["which", "mvn"]).decode("utf-8").strip()
+    print(f"Maven installation path: {install_path}")
+
+    # Check if it's a symlink (if applicable)
+    symlink = subprocess.check_output(["ls", "-l", "/usr/bin/mvn"]).decode("utf-8").strip()
+    print(f"Maven symlink info: {symlink}")
+
+if __name__ == "__main__":
+    test_maven()
+
+
+
+
+
+import subprocess
+
+def test_curl():
+    # Check cURL version
+    version = subprocess.check_output(["curl", "--version"]).decode("utf-8").strip()
+    print(f"cURL version: {version}")
+
+    # Check installation path
+    install_path = subprocess.check_output(["which", "curl"]).decode("utf-8").strip()
+    print(f"cURL installation path: {install_path}")
+
+    # Check if it's a symlink (if applicable)
+    symlink = subprocess.check_output(["ls", "-l", "/usr/bin/curl"]).decode("utf-8").strip()
+    print(f"cURL symlink info: {symlink}")
+
+if __name__ == "__main__":
+    test_curl()
