@@ -3,46 +3,53 @@
 FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
 
 if [ -f "$FILE" ]; then
-    echo "Replacing integration test results in $FILE"
+    echo "Checking for existing integration test results in $FILE"
+    # Use awk to check if section exists and handle both cases
     awk -v new_results="${{ env.results }}" '
-    BEGIN { in_integration = 0 }
+    BEGIN { 
+        section_exists = 0 
+        in_section = 0
+    }
+    # Look for the Integration Test Results header
     /^# Integration Test Results/ { 
-        print;
-        print new_results;
-        in_integration = 1;
-        next;
+        section_exists = 1
+        in_section = 1
+        print
+        print new_results
+        next
     }
-    /^#/ && in_integration { 
-        in_integration = 0 
+    # If we find another h1 header while in our section, exit the section
+    /^# / && in_section { 
+        in_section = 0 
+        print
+        next
     }
-    !in_integration { print }
+    # Print lines if we are not in our section
+    !in_section { 
+        print 
+    }
+    END {
+        # If section was never found, append it at the end
+        if (section_exists == 0) {
+            print "\n# Integration Test Results"
+            print new_results
+        }
+    }
     ' "$FILE" > temp.md && mv temp.md "$FILE"
-    
-    # Check if changes were made
-    if [ -n "$(git status -s "$FILE")" ]; then
-        cd wiki
-        git config user.name "${{ github.actor }}"
-        git config user.email "${{ github.actor }}@users.noreply.github.com"
-        git add "$FILE"
-        git commit -m "Update integration test results in v$NEXT_TAG"
-        git push
-    else
-        echo "No changes detected in content"
-    fi
 else
     echo "Creating new file: $FILE"
     mkdir -p "$(dirname "$FILE")"
     echo "# Integration Test Results" > "$FILE"
     echo "${{ env.results }}" >> "$FILE"
-    
-    cd wiki
-    git config user.name "${{ github.actor }}"
-    git config user.email "${{ github.actor }}@users.noreply.github.com"
-    git add "$FILE"
-    git commit -m "Update integration test results in v$NEXT_TAG"
-    git push
 fi
 
-# Debug: Show final content
-echo "Final content of $FILE:"
-cat "$FILE"
+# Add and commit if there are changes
+cd wiki
+git config user.name "${{ github.actor }}"
+git config user.email "${{ github.actor }}@users.noreply.github.com"
+git add "$FILE"
+git status --porcelain "$FILE" | grep -q . && {
+    echo "Changes detected, committing and pushing"
+    git commit -m "Update integration test results in v$NEXT_TAG"
+    git push
+} || echo "No changes to commit"
