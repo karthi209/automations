@@ -6,12 +6,13 @@ import sys
 def copy_file_to_container(container, src_path, dest_path):
     """Copy a file to the running container."""
     with open(src_path, 'rb') as file_data:
-        container.put_archive(
-            os.path.dirname(dest_path),
-            data=docker.utils.tar(
-                {os.path.basename(dest_path): file_data.read()}
-            ),
-        )
+        # Create a tar stream for the file
+        tar_data = docker.utils.tar({
+            os.path.basename(dest_path): file_data.read()
+        })
+        
+        # Put the archive (tar data) into the container
+        container.put_archive(os.path.dirname(dest_path), tar_data)
 
 def run_tests_in_image(image_name, test_files):
     """Run test scripts inside the specified Docker image."""
