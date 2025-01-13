@@ -3,53 +3,23 @@
 FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
 
 if [ -f "$FILE" ]; then
-    echo "Checking for existing integration test results in $FILE"
-    # Use awk to check if section exists and handle both cases
-    awk -v new_results="${{ env.results }}" '
-    BEGIN { 
-        section_exists = 0 
-        in_section = 0
-    }
-    # Look for the Integration Test Results header
-    /^# Integration Test Results/ { 
-        section_exists = 1
-        in_section = 1
-        print
-        print new_results
-        next
-    }
-    # If we find another h1 header while in our section, exit the section
-    /^# / && in_section { 
-        in_section = 0 
-        print
-        next
-    }
-    # Print lines if we are not in our section
-    !in_section { 
-        print 
-    }
-    END {
-        # If section was never found, append it at the end
-        if (section_exists == 0) {
-            print "\n# Integration Test Results"
-            print new_results
-        }
-    }
-    ' "$FILE" > temp.md && mv temp.md "$FILE"
+    # Check if section exists
+    if grep -q "^# Integration Test Results" "$FILE"; then
+        # Section exists - replace content between this header and next header
+        sed -i '/^# Integration Test Results/,/^# /c\# Integration Test Results\n'"${{ env.results }}"'\n' "$FILE"
+    else
+        # Section doesn't exist - append to end of file
+        echo -e "\n# Integration Test Results\n${{ env.results }}" >> "$FILE"
+    fi
 else
-    echo "Creating new file: $FILE"
-    mkdir -p "$(dirname "$FILE")"
-    echo "# Integration Test Results" > "$FILE"
-    echo "${{ env.results }}" >> "$FILE"
+    # File doesn't exist - create new
+    echo -e "# Integration Test Results\n${{ env.results }}" > "$FILE"
 fi
 
-# Add and commit if there are changes
+# Commit if there are changes
 cd wiki
 git config user.name "${{ github.actor }}"
 git config user.email "${{ github.actor }}@users.noreply.github.com"
 git add "$FILE"
-git status --porcelain "$FILE" | grep -q . && {
-    echo "Changes detected, committing and pushing"
-    git commit -m "Update integration test results in v$NEXT_TAG"
-    git push
-} || echo "No changes to commit"
+git commit -m "Update integration test results in v$NEXT_TAG" || echo "No changes to commit"
+git push
