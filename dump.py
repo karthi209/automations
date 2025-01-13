@@ -1,6 +1,10 @@
 import subprocess
 import json
 import os
+import time
+
+OUTPUT_FILE = "test_results.json"
+EXPECTED_VALUES_FILE = "expected_values.json"
 
 def load_expected_values(file_path):
     """Load expected values from the source of truth JSON file."""
@@ -11,6 +15,33 @@ def load_expected_values(file_path):
         print(f"Error loading expected values: {e}")
         return {}
 
+def write_results_to_file(results):
+    """Save the consolidated test results to a JSON file."""
+    with open(OUTPUT_FILE, "w") as f:
+        json.dump(results, f, indent=4)
+
+def run_tool_tests(tools):
+    """Run test scripts for each tool and consolidate results."""
+    results = {}
+    expected_values = load_expected_values(EXPECTED_VALUES_FILE)
+
+    for tool_name, script_path in tools.items():
+        print(f"Running tests for {tool_name}...")
+        try:
+            output = subprocess.check_output(["python3", script_path]).decode("utf-8")
+            tool_results = json.loads(output)
+
+            # Compare with expected values
+            comparison = compare_results_with_expected(tool_name, tool_results, expected_values)
+            results[tool_name] = {
+                "Results": tool_results,
+                "Comparison": comparison
+            }
+        except Exception as e:
+            print(f"Error testing {tool_name}: {e}")
+            results[tool_name] = {"Error": str(e)}
+
+    return results
 
 def compare_results_with_expected(tool_name, results, expected_values):
     """Compare actual results with expected values."""
@@ -35,26 +66,29 @@ def compare_results_with_expected(tool_name, results, expected_values):
         comparison["Error"] = f"No expected values defined for {tool_name}"
     return comparison
 
-
-def write_results_to_file(tool_name, results, comparison, output_file="test_results.json"):
-    """Save the test results and comparisons to a JSON file."""
-    if os.path.exists(output_file):
-        with open(output_file, "r") as f:
-            all_results = json.load(f)
-    else:
-        all_results = {}
-
-    all_results[tool_name] = {
-        "Results": results,
-        "Comparison": comparison
+if __name__ == "__main__":
+    # Define tool test scripts
+    tools = {
+        "Python3": "test_tools/test_python3.py",
+        "Maven": "test_tools/test_maven.py",
+        "Curl": "test_tools/test_curl.py",
     }
 
-    with open(output_file, "w") as f:
-        json.dump(all_results, f, indent=4)
+    print("Running all tool tests...")
+    results = run_tool_tests(tools)
 
+    print(f"Saving results to {OUTPUT_FILE}...")
+    write_results_to_file(results)
+
+    print(f"All tests completed. Results saved to {OUTPUT_FILE}.")
+
+
+
+
+import subprocess
+import json
 
 def test_python3():
-    """Test details for Python3."""
     results = {}
     try:
         # Test Version
@@ -79,37 +113,41 @@ def test_python3():
 
     return results
 
+if __name__ == "__main__":
+    results = test_python3()
+    print(json.dumps(results))
+
+
+
+
+import subprocess
+import json
+
+def test_maven():
+    results = {}
+    try:
+        # Test Version
+        version = subprocess.check_output(["mvn", "--version"]).decode("utf-8").strip().split("\n")[0]
+        results["Version"] = version.split(" ")[-1]
+    except Exception as e:
+        results["Version"] = f"Error: {e}"
+
+    try:
+        # Test Installation Path
+        install_path = subprocess.check_output(["which", "mvn"]).decode("utf-8").strip()
+        results["Installation Path"] = install_path
+    except Exception as e:
+        results["Installation Path"] = f"Error: {e}"
+
+    try:
+        # Test Symlink Path
+        symlink = subprocess.check_output(["ls", "-l", "/usr/bin/mvn"]).decode("utf-8").strip()
+        results["Symlink"] = symlink
+    except Exception as e:
+        results["Symlink"] = "Not present or Error: " + str(e)
+
+    return results
 
 if __name__ == "__main__":
-    tool_name = "Python3"
-    output_file = "test_results.json"
-    expected_values_file = "expected_values.json"
-
-    print(f"Loading expected values from {expected_values_file}...")
-    expected_values = load_expected_values(expected_values_file)
-
-    print(f"Running tests for {tool_name}...")
-    results = test_python3()
-
-    print("Comparing results with expected values...")
-    comparison = compare_results_with_expected(tool_name, results, expected_values)
-
-    print(f"Saving results to {output_file}...")
-    write_results_to_file(tool_name, results, comparison, output_file)
-
-    print(f"Results saved for {tool_name}.")
-
-
-
-{
-    "Python3": {
-        "Expected Version": "3.8.10",
-        "Expected Installation Path": "/usr/bin/python3",
-        "Expected Symlink": "python3 -> /usr/bin/python3.8"
-    },
-    "Maven": {
-        "Expected Version": "3.6.3",
-        "Expected Installation Path": "/usr/bin/mvn",
-        "Expected Symlink": "mvn -> /usr/share/maven/bin/mvn"
-    }
-}
+    results = test_maven()
+    print(json.dumps(results))
