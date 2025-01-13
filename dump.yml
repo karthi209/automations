@@ -1,59 +1,49 @@
-name: Update Wiki with Integration Test Results
+#!/bin/bash
 
-on:
-  workflow_dispatch:
+# First part remains the same
+echo "*results<<EOF" >> $GITHUB_ENV
+echo "$RESULTS" >> $GITHUB_ENV
+echo "EOF" >> $GITHUB_ENV
 
-jobs:
-  integration-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Read Integration Test Results
-        id: read-results
-        run: |
-          # Ensure the summary file exists
-          if [ ! -f summary.md ]; then
-            echo "Error: summary.md not found"
-            exit 1
-          fi
-
-          # Read the summary.md file into an environment variable
-          RESULTS=$(cat summary.md)
-          echo "results<<EOF" >> $GITHUB_ENV
-          echo "$RESULTS" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: Replace Integration Test Results in Wiki
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTEGRATION_RESULTS: ${{ env.results }}
-        run: |
-          # Clone the wiki repository
-          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.wiki.git wiki
-
-          # Path to the file
-          FILE="wiki/unit-tests/test_results_v2.2.70.md"
-
-          # Replace the Integration Test Results section
-          if [ -f "$FILE" ]; then
-            echo "Replacing integration test results in $FILE"
-            awk -v new_results="$INTEGRATION_RESULTS" '
-              BEGIN { in_integration = 0 }
-              /^## Integration Test Results/ { print new_results; in_integration = 1; next }
-              /^## / && in_integration { in_integration = 0 }
-              !in_integration { print }
-            ' "$FILE" > temp.md && mv temp.md "$FILE"
-          else
-            echo "Unit test report does not exist. Exiting."
-            exit 1
-          fi
-
-          # Push the updated file to the wiki
-          cd wiki
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git add .
-          git commit -m "Update integration test results in v2.2.70 report"
-          git push
+name: Push report to wiki
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  TAG: ${{ env.TAG }}
+  NEXT_TAG: ${{ env.NEXT_TAG }}
+  INTEGRATION_RESULTS: ${{ env.results }}
+run: |
+  git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.kp.org/${{ github.repository }}.wiki.git wiki
+  ls -la wiki
+  
+  # Path to the file
+  FILE="wiki/test_results_v${{ env.NEXT_TAG }}.md"
+  
+  # Replace the Integration Test Results section
+  if [ -f "$FILE" ]; then
+    echo "Updating integration test results in $FILE"
+    awk -v new_results="${{ env.results }}" '
+      BEGIN { in_integration = 0; printed = 0 }
+      /^# Integration Test Results/ { 
+        if (!printed) {
+          print $0
+          print new_results
+          printed = 1
+        }
+        in_integration = 1
+        next
+      }
+      /^#/ { in_integration = 0 }
+      !in_integration { print }
+    ' "$FILE" > temp.md && mv temp.md "$FILE"
+  else
+    echo "Creating new test results file"
+    echo "# Integration Test Results" > "$FILE"
+    echo "${{ env.results }}" >> "$FILE"
+  fi
+  
+  cd wiki
+  git config user.name "${{ github.actor }}"
+  git config user.email "${{ github.actor }}@users.noreply.github.com"
+  git add .
+  git commit -m "Update integration test results in v$NEXT_TAG"
+  git push
