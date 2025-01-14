@@ -1,85 +1,31 @@
-import json
 import subprocess
 import os
+import json
 import docker
-import random
-import string
-import argparse
-from pathlib import Path
 
-# Paths
-OUTPUT_REPORT_PATH = '/tmp/test_tools/final_report.md'  # Path in container where markdown will be saved
-LOCAL_REPORT_PATH = 'final_report.md'  # Path on host where markdown will be copied
+# Docker settings
+DOCKER_IMAGE_NAME = "your-docker-image-name"  # This will be passed from the command line
+CONTAINER_NAME = f"test_container_{os.urandom(4).hex()}"
+TEST_REPORT_PATH = '/tmp/test_tools/test_report.json'
+TOOL_VERSION_PATH = '/tmp/test_tools/tool_version.json'
+OUTPUT_REPORT_PATH = '/tmp/test_tools/final_report.md'
+TEST_FILES_DIR = '/path/to/test_files'  # Modify this with the correct path
+TEST_CONTAINER_DIR = '/tmp/test_tools'
 
 SUCCESS_ICON = "✅"
 FAILURE_ICON = "❌"
 
-def random_container_name():
-    """Generate a random Docker container name."""
-    return "test_container_" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-
-def spin_up_container(image_name, container_name):
-    """Spin up a Docker container in detached mode and keep it alive."""
-    client = docker.from_env()
+def load_json(file_path):
+    """Load a JSON file."""
     try:
-        container = client.containers.run(
-            image=image_name,
-            name=container_name,
-            command="tail -f /dev/null",  # Keeps the container running
-            detach=True,
-            tty=True
-        )
-        print(f"Container {container_name} started.")
-        return container
-    except Exception as e:
-        print(f"Error spinning up container: {e}")
-        return None
-
-def setup_virtualenv(container):
-    """Set up a virtual environment and install required Python packages inside the container."""
-    try:
-        # Command to create and activate a virtual environment inside the container
-        setup_command = "python3 -m venv /tmp/test_tools/venv && " \
-                        "source /tmp/test_tools/venv/bin/activate && " \
-                        "pip install pytest"
-        result = container.exec_run(f"bash -c '{setup_command}'")
-        print(result.output.decode())
-    except Exception as e:
-        print(f"Error setting up virtual environment: {e}")
-
-def copy_test_files(container):
-    """Copy test files into the container."""
-    try:
-        # Copy logic (you can implement as per your setup)
-        print("Test files copied successfully.")
-    except Exception as e:
-        print(f"Error copying test files: {e}")
-
-def run_tests(container):
-    """Run pytest inside the container and generate a JSON report."""
-    try:
-        # Running the pytest command in the virtual environment inside the container
-        command = f"source /tmp/test_tools/venv/bin/activate && pytest --json-report --json-report-file=/tmp/test_tools/test_report.json"
-        result = container.exec_run(command)
-        print(result.output.decode())
-        return '/tmp/test_tools/test_report.json'
-    except Exception as e:
-        print(f"Error running tests: {e}")
-        return None
-
-def get_tool_versions(container):
-    """Get tool versions inside the container."""
-    tools = ["git", "python", "node", "docker"]
-    versions = {}
-    for tool in tools:
-        try:
-            result = container.exec_run(f"{tool} --version")
-            output = result.output.decode().strip()
-            versions[tool] = output.split()[1] if output else "Unknown version"
-        except Exception as e:
-            versions[tool] = "Error retrieving version"
-            print(f"Error getting version for {tool}: {e}")
-    return versions
+        with open(file_path, 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print(f"Error: {file_path} not found.")
+        return {}
+    except json.JSONDecodeError:
+        print(f"Error: Failed to parse {file_path}. Ensure it is valid JSON.")
+        return {}
 
 def extract_tool_name(nodeid):
     """Extract tool name from nodeid."""
@@ -116,68 +62,87 @@ def generate_markdown(test_report, tool_versions):
             markdown += f"- {test_result}\n"
         markdown += "\n"
 
-    # Save the markdown file inside the container
     with open(OUTPUT_REPORT_PATH, 'w') as file:
         file.write(markdown)
 
     print(f"Markdown report saved to {OUTPUT_REPORT_PATH}")
 
-def copy_report_from_container(container):
-    """Copy the final markdown report from the container to the host."""
+def run_tests(container):
+    """Run pytest inside the container and generate a JSON report."""
     try:
-        with open(LOCAL_REPORT_PATH, 'wb') as f:
-            bits, _ = container.get_archive(OUTPUT_REPORT_PATH)
-            for chunk in bits:
-                f.write(chunk)
-        print(f"Markdown report copied to {LOCAL_REPORT_PATH}")
+        # Running the pytest command in the virtual environment inside the container
+        command = f"source /tmp/test_tools/venv/bin/activate && pytest --json-report --json-report-file=/tmp/test_tools/test_report.json"
+        result = container.exec_run(command)
+
+        # Print the output of the pytest command to debug issues
+        print("Pytest output:")
+        print(result.output.decode())
+
+        # Check if the test report was generated
+        if result.exit_code != 0:
+            print("Error: Pytest failed to run successfully.")
+            return None
+        return '/tmp/test_tools/test_report.json'
+
     except Exception as e:
-        print(f"Error copying report from container: {e}")
+        print(f"Error running tests: {e}")
+        return None
 
-def main():
-    parser = argparse.ArgumentParser(description="Run tests and generate a summary report.")
-    parser.add_argument("--image", required=True, help="Docker image name to use for testing.")
-    args = parser.parse_args()
-
-    image_name = args.image
-    container_name = random_container_name()
-
-    # Spin up Docker container in detached mode
-    container = spin_up_container(image_name, container_name)
-    if not container:
-        print("Failed to create container.")
-        return
-
+def run_docker_container():
+    """Start the Docker container, install dependencies, and run tests."""
     try:
-        # Set up virtual environment and install dependencies
-        setup_virtualenv(container)
+        # Connect to Docker
+        client = docker.from_env()
 
-        # Copy test files (if needed)
-        copy_test_files(container)
+        # Create and start a Docker container
+        container = client.containers.run(
+            DOCKER_IMAGE_NAME,
+            name=CONTAINER_NAME,
+            detach=True,
+            volumes={
+                TEST_FILES_DIR: {'bind': TEST_CONTAINER_DIR, 'mode': 'rw'}
+            },
+            environment=["PYTHONPATH=/tmp/test_tools"],
+        )
 
-        # Run tests
+        print(f"Container {CONTAINER_NAME} started successfully.")
+
+        # Set up a virtual environment inside the container
+        container.exec_run("python3 -m venv /tmp/test_tools/venv")
+        container.exec_run("source /tmp/test_tools/venv/bin/activate && pip install pytest")
+
+        # Run tests inside the container
         test_report_path = run_tests(container)
-        if not test_report_path:
-            print("Test execution failed.")
+
+        if test_report_path:
+            print(f"Test report saved to {test_report_path}")
+        else:
+            print("Error: Test report was not generated.")
             return
 
-        # Load test results
-        with open(test_report_path, 'r') as file:
-            test_report = json.load(file)
+        # After tests are done, copy the test report and tool versions from the container to the host
+        with open(TEST_REPORT_PATH, 'wb') as f:
+            f.write(container.exec_run(f"cat {test_report_path}").output)
 
-        # Get tool versions
-        tool_versions = get_tool_versions(container)
+        # Assuming tool versions are saved to TOOL_VERSION_PATH, copy them
+        with open(TOOL_VERSION_PATH, 'wb') as f:
+            f.write(container.exec_run(f"cat {TOOL_VERSION_PATH}").output)
 
-        # Generate Markdown report inside container
-        generate_markdown(test_report, tool_versions)
+        # Generate the final markdown report
+        test_report = load_json(TEST_REPORT_PATH)
+        tool_versions = load_json(TOOL_VERSION_PATH)
 
-        # Copy the generated Markdown report from the container to the host
-        copy_report_from_container(container)
+        if test_report and tool_versions:
+            generate_markdown(test_report, tool_versions)
 
-    finally:
-        # Cleanup: Stop and remove container
+        # Clean up: Stop and remove the container after tests
         container.stop()
         container.remove()
-        print(f"Container {container_name} stopped and removed.")
+
+    except docker.errors.DockerException as e:
+        print(f"Error: Docker-related issue: {e}")
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    main()
+    run_docker_container()
