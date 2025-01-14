@@ -1,56 +1,121 @@
 import subprocess
-import os
 import sys
-import pytest
+import time
+import json
+import os
 
-# Test 1: Check Maven version
-def test_maven_version():
-    """Ensure the installed Maven version is correct."""
-    expected_version = "3.8"  # Modify this based on your requirements
+def get_test_files(test_folder):
+    # Discover all Python test files in the test folder
+    test_files = {}
+    for file_name in os.listdir(test_folder):
+        if file_name.endswith(".py"):
+            test_files[file_name] = f"/test_tools/{file_name}"
+    return test_files
+
+def run_docker_container(image_name, test_folder):
+    container_name = f"test-container-{int(time.time())}"
+    
     try:
-        result = subprocess.run(
-            ["mvn", "-v"], capture_output=True, text=True, check=True
-        )
-        version = result.stdout.strip().splitlines()[0]
-        assert version.startswith(f"Apache Maven {expected_version}"), f"Expected version {expected_version}, but got {version}"
+        # Pull the Docker image (if not already pulled)
+        print(f"Pulling Docker image {image_name}...")
+        subprocess.check_call(["docker", "pull", image_name])
+
+        # Run the container
+        print(f"Starting container {container_name}...")
+        subprocess.check_call([
+            "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
+        ])
+        
+        # Get the test files dynamically from the folder
+        test_files = get_test_files(test_folder)
+        
+        # Copy test files to the container
+        print("Copying test files to the container...")
+        for src, dest in test_files.items():
+            subprocess.check_call(["docker", "cp", os.path.join(test_folder, src), f"{container_name}:{dest}"])
+
+        # Run the test scripts inside the container
+        print("Running tests inside the container...")
+        subprocess.check_call([
+            "docker", "exec", container_name, "pytest", "--json-report", "--json-report-file=result.json", "/test_tools"
+        ])
+
+        print("Test completed.")
+        
     except subprocess.CalledProcessError as e:
-        pytest.fail(f"Failed to run Maven: {e}")
+        print(f"Error: {e}")
+    finally:
+        # Stop and remove the container
+        print(f"Stopping and removing container {container_name}...")
+        subprocess.check_call(["docker", "stop", container_name])
+        subprocess.check_call(["docker", "rm", container_name])
 
-# Test 2: Check Maven installation path
-def test_maven_installation_path():
-    """Ensure Maven is installed in the expected directory."""
-    expected_path = "/usr/local/bin/mvn"  # Modify this based on your expected Maven installation path
-    maven_path = subprocess.run(
-        ["which", "mvn"], capture_output=True, text=True, check=True
-    ).stdout.strip()
-    assert maven_path == expected_path, f"Expected Maven path {expected_path}, but got {maven_path}"
 
-# Test 3: Check if Maven is symlinked correctly
-def test_maven_symlink():
-    """Ensure that the mvn executable is symlinked to the correct executable."""
-    symlink_path = "/usr/bin/mvn"  # Modify this path based on your system
-    real_path = os.readlink(symlink_path)
-    expected_path = subprocess.run(
-        ["which", "mvn"], capture_output=True, text=True, check=True
-    ).stdout.strip()
-    assert real_path == expected_path, f"Symlink {symlink_path} points to {real_path}, expected {expected_path}"
+if __name__ == "__main__":
+    image_name = sys.argv[1]  # Docker image name
+    test_folder = "test_tools"  # Folder with the test files
+    run_docker_container(image_name, test_folder)
 
-# Test 4: Check if Maven can run a simple command
-def test_maven_functionality():
-    """Run a simple Maven command to test functionality."""
-    try:
-        result = subprocess.run(
-            ["mvn", "clean", "validate"], capture_output=True, text=True, check=True
-        )
-        assert "BUILD SUCCESS" in result.stdout, f"Maven command failed with output: {result.stdout}"
-    except subprocess.CalledProcessError as e:
-        pytest.fail(f"Failed to run Maven command: {e}")
 
-# Test 5: Check Maven environment variables
-def test_maven_environment():
-    """Ensure Maven's environment variables are set correctly."""
-    maven_env = subprocess.run(
-        ["mvn", "--version"], capture_output=True, text=True
-    ).stdout.strip()
-    assert "MAVEN_HOME" in maven_env, "MAVEN_HOME is not set"
-    assert "JAVA_HOME" in maven_env, "JAVA_HOME is not set"
+
+
+
+
+
+
+import json
+
+def generate_markdown_table(test_summary):
+    table = "| Tool Name | Version | Test Results | Status |\n"
+    table += "|-----------|---------|--------------|--------|\n"
+    
+    for tool, details in test_summary.items():
+        test_results = f"{details['tests_passed']}/{details['tests_run']}"
+        status = "✔" if details['status'] == "pass" else "❌"
+        table += f"| {tool} | {details['version']} | {test_results} | {status} |\n"
+    
+    return table
+
+
+def generate_summary():
+    # Read the summary from the JSON file generated by pytest
+    with open("result.json", "r") as f:
+        data = json.load(f)
+
+    # Initialize summary dictionary
+    summary = {}
+
+    for test in data["tests"]:
+        tool_name = test["name"]
+        version = test.get("stdout", "N/A")
+        status = "pass" if test["status"] == "passed" else "fail"
+        
+        if tool_name not in summary:
+            summary[tool_name] = {
+                "version": version,
+                "tests_run": 0,
+                "tests_passed": 0,
+                "status": status
+            }
+
+        summary[tool_name]["tests_run"] += 1
+        if status == "pass":
+            summary[tool_name]["tests_passed"] += 1
+
+    return summary
+
+
+if __name__ == "__main__":
+    # Generate the test summary
+    test_summary = generate_summary()
+
+    # Convert to markdown
+    markdown_table = generate_markdown_table(test_summary)
+
+    # Output the markdown table (you can save it to a file)
+    with open("test_summary.md", "w") as f:
+        f.write(markdown_table)
+
+    # Print markdown for GitHub summary
+    print(markdown_table)
+
