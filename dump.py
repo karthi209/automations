@@ -3,14 +3,6 @@ import sys
 import time
 import os
 
-def get_test_files(test_folder):
-    # Discover all Python test files in the test folder
-    test_files = {}
-    for file_name in os.listdir(test_folder):
-        if file_name.endswith(".py"):
-            test_files[file_name] = f"/test_tools/{file_name}"
-    return test_files
-
 def run_docker_container(image_name, test_folder):
     container_name = f"test-container-{int(time.time())}"
     
@@ -25,22 +17,20 @@ def run_docker_container(image_name, test_folder):
             "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
         ])
         
-        # Get the test files dynamically from the folder
-        test_files = get_test_files(test_folder)
-        
-        # Copy the test files to the container
-        print("Copying test files to the container...")
-        for src, dest in test_files.items():
-            src_path = os.path.join(test_folder, src)
-            print(f"Copying {src_path} to {container_name}:{dest}")
-            subprocess.check_call(["docker", "cp", src_path, f"{container_name}:{dest}"])
+        # Copy the entire test_tools folder to /tmp in the container
+        print(f"Copying the test tools folder to {container_name}:/tmp/test_tools")
+        subprocess.check_call(["docker", "cp", test_folder, f"{container_name}:/tmp/test_tools"])
 
-        # Run the test scripts inside the container
+        # Verify the files are correctly copied into the container
+        print("Verifying copied files in the container...")
+        subprocess.check_call(["docker", "exec", container_name, "ls", "/tmp/test_tools"])
+
+        # Run the test scripts inside the container (from the /tmp/test_tools folder)
         print("Running tests inside the container...")
-        subprocess.check_call([
-            "docker", "exec", container_name, "pytest", "--json-report", "--json-report-file=result.json", "/test_tools"
+        result = subprocess.check_call([
+            "docker", "exec", container_name, "pytest", "--json-report", "--json-report-file=/tmp/test_tools/result.json", "/tmp/test_tools"
         ])
-
+        
         print("Test completed.")
         
     except subprocess.CalledProcessError as e:
