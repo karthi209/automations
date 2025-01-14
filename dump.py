@@ -51,6 +51,12 @@ def run_docker_tests(image_name):
             "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"
         ])
 
+        # Debug: Check if the file exists inside the container
+        print("Checking if the JSON report exists inside the container...")
+        subprocess.check_call([
+            "docker", "exec", container_name, "ls", "-l", f"{container_tmp_dir}/test_report.json"
+        ])
+
         # Copy the JSON report back to the host
         print(f"Copying the JSON report to {host_output_report}...")
         subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report])
