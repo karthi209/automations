@@ -4,6 +4,7 @@ import os
 
 def run_docker_tests(image_name, test_scripts_dir, output_report):
     container_name = f"test-container-{int(time.time())}"
+    container_tmp_dir = "/tmp/test_tools"  # Working directory inside the container
 
     try:
         # Pull the Docker image
@@ -16,33 +17,33 @@ def run_docker_tests(image_name, test_scripts_dir, output_report):
             "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
         ])
 
-        # Copy test scripts into the container
-        print(f"Copying test scripts from {test_scripts_dir} to the container...")
-        subprocess.check_call(["docker", "cp", test_scripts_dir, f"{container_name}:/test_tools"])
+        # Copy test scripts into the /tmp folder inside the container
+        print(f"Copying test scripts from {test_scripts_dir} to the container at {container_tmp_dir}...")
+        subprocess.check_call(["docker", "cp", test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
 
-        # Create a virtual environment inside the container
+        # Create a virtual environment inside the container in the /tmp directory
         print("Creating virtual environment in the container...")
         subprocess.check_call([
-            "docker", "exec", container_name, "python3", "-m", "venv", "/test_tools/venv"
+            "docker", "exec", container_name, "python3", "-m", "venv", f"{container_tmp_dir}/venv"
         ])
 
         # Install pytest and dependencies in the virtual environment
         print("Installing pytest in the virtual environment...")
         subprocess.check_call([
-            "docker", "exec", container_name, "/test_tools/venv/bin/pip", "install",
+            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install",
             "pytest", "pytest-json-report"
         ])
 
         # Run pytest in the virtual environment with JSON reporting
         print("Running pytest in the container with JSON reporting...")
         subprocess.check_call([
-            "docker", "exec", container_name, "/test_tools/venv/bin/pytest", "/test_tools",
-            "--json-report", "--json-report-file", "/test_tools/test_report.json"
+            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
+            "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"
         ])
 
         # Copy the JSON report back to the host
         print(f"Copying the JSON report to {output_report}...")
-        subprocess.check_call(["docker", "cp", f"{container_name}:/test_tools/test_report.json", output_report])
+        subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", output_report])
 
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
