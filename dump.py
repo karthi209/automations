@@ -1,8 +1,10 @@
 import json
 
+
 def parse_test_report(report_file):
     """
-    Parses the pytest default JSON report and generates a Markdown summary.
+    Parses the pytest JSON report and generates a Markdown summary with tool names
+    and the results for version, installation path, symlink, and functionality tests.
 
     :param report_file: Path to the pytest JSON report.
     :return: Markdown formatted report.
@@ -11,33 +13,50 @@ def parse_test_report(report_file):
         with open(report_file, "r") as file:
             report_data = json.load(file)
 
-        summary = report_data.get("summary", {})
-        total_tests = summary.get("total", 0)
-        passed_tests = summary.get("passed", 0)
-        failed_tests = summary.get("failed", 0)
-        skipped_tests = summary.get("skipped", 0)
+        tools_results = []
 
-        # Start creating the markdown report
-        markdown_report = f"## Test Results Summary\n\n"
-        markdown_report += f"Total Tests: {total_tests}\n"
-        markdown_report += f"Passed: {passed_tests} ✅\n"
-        markdown_report += f"Failed: {failed_tests} ❌\n"
-        markdown_report += f"Skipped: {skipped_tests} ⏸️\n\n"
-
-        markdown_report += "### Detailed Test Results\n\n"
-        markdown_report += "| Test Name | Outcome | Duration | Message |\n"
-        markdown_report += "|-----------|---------|----------|---------|\n"
-
-        # Add each test result to the markdown table
+        # Iterate through tests to process results for each tool
         for test in report_data.get("tests", []):
             test_name = test.get("nodeid", "Unknown Test")
             outcome = test.get("outcome", "unknown")
-            duration = test.get("duration", 0)
             message = test.get("message", "")
+
+            # Extract the tool name from the test name (assuming tool names are part of the test nodeid)
+            tool_name = test_name.split("::")[0]  # Use the first part of the test name as tool name
+
+            # Prepare outcome symbols for pass/fail
             outcome_symbol = "✅" if outcome == "passed" else "❌" if outcome == "failed" else "⏸️"
 
-            # Add test details as a row in the table
-            markdown_report += f"| {test_name} | {outcome_symbol} | {duration:.2f} sec | {message} |\n"
+            # Store results for the tool in the form of (tool_name, version, install_path, symlink, functionality)
+            tool_result = next((tool for tool in tools_results if tool["tool_name"] == tool_name), None)
+            if tool_result is None:
+                tool_result = {
+                    "tool_name": tool_name,
+                    "version_test": "❌",
+                    "install_path_test": "❌",
+                    "symlink_test": "❌",
+                    "functional_test": "❌",
+                }
+                tools_results.append(tool_result)
+
+            # Assign the appropriate outcome based on the test name
+            if "version" in test_name:
+                tool_result["version_test"] = outcome_symbol
+            elif "install_path" in test_name:
+                tool_result["install_path_test"] = outcome_symbol
+            elif "symlink" in test_name:
+                tool_result["symlink_test"] = outcome_symbol
+            elif "functional" in test_name:
+                tool_result["functional_test"] = outcome_symbol
+
+        # Start creating the markdown report
+        markdown_report = f"## Test Results Summary\n\n"
+        markdown_report += "| Tool Name | Version Test | Install Path Test | Symlink Test | Functional Test |\n"
+        markdown_report += "|-----------|--------------|-------------------|--------------|-----------------|\n"
+
+        # Add rows for each tool's result
+        for tool_result in tools_results:
+            markdown_report += f"| {tool_result['tool_name']} | {tool_result['version_test']} | {tool_result['install_path_test']} | {tool_result['symlink_test']} | {tool_result['functional_test']} |\n"
 
         return markdown_report
 
