@@ -8,6 +8,10 @@ TOOL_VERSIONS_FILE = 'tool_versions.json'
 # Path to the output Markdown file
 OUTPUT_MD_FILE = 'test_summary.md'
 
+# Icons for success and failure
+SUCCESS_ICON = "✅"
+FAILURE_ICON = "❌"
+
 def load_json(file_path):
     """Load a JSON file and return its content."""
     try:
@@ -31,33 +35,43 @@ def generate_tool_versions_section(tool_versions):
     section += "\n"
     return section
 
-def generate_test_results_section(test_report):
-    """Generate a Markdown section for test results."""
-    if not test_report:
+def categorize_tests_by_tool(test_report):
+    """Categorize the tests by the tool name."""
+    categorized_tests = {}
+
+    # Extract relevant information from the JSON test report
+    for test in test_report.get("tests", []):
+        tool = test.get('tool', 'Unknown')
+        outcome = test.get('outcome', 'unknown')
+        test_name = test.get('test', 'Unnamed Test')
+        message = test.get('message', 'No message')
+
+        if tool not in categorized_tests:
+            categorized_tests[tool] = []
+
+        categorized_tests[tool].append({
+            "name": test_name,
+            "outcome": outcome,
+            "message": message
+        })
+    
+    return categorized_tests
+
+def generate_test_results_section(categorized_tests):
+    """Generate a Markdown section for categorized test results."""
+    if not categorized_tests:
         return "### Test Results\nNo test results available.\n"
     
-    section = "### Test Results\n\n"
+    section = "### Test Results by Tool\n\n"
     
-    # Extract relevant information from the JSON test report
-    summary = test_report.get("summary", {})
-    total_tests = summary.get("total", 0)
-    passed_tests = summary.get("passed", 0)
-    failed_tests = summary.get("failed", 0)
-    skipped_tests = summary.get("skipped", 0)
+    for tool, tests in categorized_tests.items():
+        section += f"#### {tool}\n"
+        for test in tests:
+            outcome = test["outcome"]
+            icon = SUCCESS_ICON if outcome == "passed" else FAILURE_ICON
+            section += f"- {icon} **{test['name']}**: {test['message']}\n"
+        section += "\n"
     
-    section += f"- **Total Tests**: {total_tests}\n"
-    section += f"- **Passed**: {passed_tests}\n"
-    section += f"- **Failed**: {failed_tests}\n"
-    section += f"- **Skipped**: {skipped_tests}\n"
-    
-    # List of failed tests, if any
-    if failed_tests > 0:
-        section += "\n#### Failed Tests\n"
-        for test in test_report.get("tests", []):
-            if test.get("outcome") == "failed":
-                section += f"- {test.get('test', 'Unknown Test')}: {test.get('message', 'No message')}\n"
-    
-    section += "\n"
     return section
 
 def generate_markdown_report(test_report, tool_versions):
@@ -66,7 +80,10 @@ def generate_markdown_report(test_report, tool_versions):
     
     # Generate the sections
     report += generate_tool_versions_section(tool_versions)
-    report += generate_test_results_section(test_report)
+    
+    # Categorize tests by tool and generate the test results section
+    categorized_tests = categorize_tests_by_tool(test_report)
+    report += generate_test_results_section(categorized_tests)
     
     return report
 
