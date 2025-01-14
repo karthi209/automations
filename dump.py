@@ -62,7 +62,7 @@ def run_docker_tests(image_name):
         # Stop and remove the container
         print(f"Stopping and removing container {container_name}...")
         subprocess.check_call(["docker", "stop", container_name])
-        subprocess.check_call(["docker", "rm", container_name"])
+        subprocess.check_call(["docker", "rm", container_name])
 
 
 if __name__ == "__main__":
