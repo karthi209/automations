@@ -1,97 +1,130 @@
 import json
+import subprocess
+import os
+import docker
+from pathlib import Path
 
-# Paths to the reports
-TEST_REPORT_PATH = 'test_report.json'
+# File paths
 TOOL_VERSION_PATH = 'tool_version.json'
 OUTPUT_REPORT_PATH = 'final_report.md'
-
-# Icons for success and failure
+TEST_DIR = Path("/tmp/test_tools")
 SUCCESS_ICON = "✅"
 FAILURE_ICON = "❌"
 
-def load_json_file(file_path):
-    """Helper function to load a JSON file."""
+def spin_up_container(image_name, container_name, test_files):
+    """Spin up a Docker container, copy test files, and run setup commands."""
+    client = docker.from_env()
     try:
-        with open(file_path, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(f"Error: {file_path} not found.")
-        return {}
-    except json.JSONDecodeError:
-        print(f"Error: Failed to parse {file_path}. Ensure it's valid JSON.")
-        return {}
+        # Create and start the container
+        container = client.containers.run(
+            image=image_name,
+            name=container_name,
+            command="sleep 300",
+            detach=True,
+            tty=True
+        )
+        print(f"Container {container_name} started.")
 
-def generate_markdown_report(test_report, tool_version_report, tool_test_mapping):
-    """Generate a Markdown report combining the test results and tool versions."""
-    tools_status = {}
-    
-    # Loop through test results and gather the outcomes
-    for collector in test_report.get('collectors', []):
-        nodeid = collector.get('nodeid', "")
-        
-        # Ensure nodeid is not empty and has the expected format
-        if nodeid and '/' in nodeid:
-            # Extract the test file name from nodeid
-            test_file_name = nodeid.split('/')[1].split('.')[0]
-            
-            # Lookup the tool name from the predefined mapping
-            tool_name = tool_test_mapping.get(test_file_name)
-            
-            if tool_name:
-                # Get version from the tool_version_report
-                tool_version = tool_version_report.get(tool_name, 'Version not found')
+        # Copy test files
+        for test_file in test_files:
+            container.put_archive(
+                TEST_DIR.as_posix(),
+                Path(test_file).read_bytes()
+            )
+        print(f"Test files copied to {container_name}.")
 
-                # Initialize tool status if not already present
-                if tool_name not in tools_status:
-                    tools_status[tool_name] = {
-                        'version': tool_version,
-                        'tests': []
-                    }
-                
-                # Add each test result to the tool's record
-                for test in collector.get('result', []):
-                    nodeid = test.get('nodeid', "")
-                    if '::' in nodeid:
-                        test_name = nodeid.split('::')[1]
-                    else:
-                        test_name = "Unknown Test"
-                    
-                    test_outcome = collector.get('outcome', "unknown")
-                    status_icon = SUCCESS_ICON if test_outcome == 'passed' else FAILURE_ICON
-                    tools_status[tool_name]['tests'].append({
-                        'test_name': test_name,
-                        'outcome': test_outcome,
-                        'icon': status_icon
-                    })
-        else:
-            print(f"Warning: Unexpected nodeid format: {nodeid}")
+        # Run setup commands
+        container.exec_run("pip install pytest pytest-json-report")
+        print("Dependencies installed.")
+        return container
 
-    # Generate the Markdown report
-    markdown_report = "# Test Summary Report\n\n"
-    
-    for tool, data in tools_status.items():
-        markdown_report += f"## {tool} (Version: {data['version']})\n"
-        for test in data['tests']:
-            markdown_report += f"- {test['test_name']} : {test['icon']} ({test['outcome']})\n"
-        markdown_report += "\n"
-    
-    # Save the report to a Markdown file
-    with open(OUTPUT_REPORT_PATH, 'w') as f:
-        f.write(markdown_report)
+    except Exception as e:
+        print(f"Error spinning up container: {e}")
+        return None
 
-    print(f"Report saved to {OUTPUT_REPORT_PATH}")
+def run_tests(container, json_report_path):
+    """Run pytest inside the container and generate a JSON report."""
+    try:
+        result = container.exec_run(f"pytest --json-report --json-report-file={json_report_path}")
+        print(result.output.decode())
+        return json_report_path
+    except Exception as e:
+        print(f"Error running tests: {e}")
+        return None
 
-if __name__ == '__main__':
-    # Define the mapping of test files to tool names
-    tool_test_mapping = {
-        "test_git": "git",
-        "test_maven": "maven",
-        # Add other test files to tool names as needed
-    }
+def get_tool_versions(container, tools):
+    """Get the version of each tool inside the container."""
+    versions = {}
+    for tool in tools:
+        try:
+            result = container.exec_run(f"{tool} --version")
+            output = result.output.decode().strip()
+            versions[tool] = output.split()[1] if output else "Unknown version"
+        except Exception as e:
+            versions[tool] = "Error retrieving version"
+            print(f"Error getting version for {tool}: {e}")
+    return versions
 
-    # Load the test report and tool version report
-    test_report = load_json_file(TEST_REPORT_PATH)
-    tool_version_report = load_json_file(TOOL_VERSION_PATH)
+def generate_markdown(test_report, tool_versions):
+    """Generate a Markdown report from test results and tool versions."""
+    markdown = "# Test Summary Report\n\n"
 
-    # Generate the final Markdown report
-    generate_markdown_report(test_report, tool_version_report, tool_test_mapping)
+    tools = {}
+
+    for test in test_report.get('tests', []):
+        nodeid = test.get('nodeid', '')
+        outcome = test.get('outcome', 'unknown')
+        tool_name = extract_tool_name(nodeid)
+        test_name = nodeid.split('::')[-1]
+
+        if tool_name not in tools:
+            tools[tool_name] = {
+                "version": tool_versions.get(tool_name, "Version not found"),
+                "tests": []
+            }
+
+        icon = SUCCESS_ICON if outcome == 'passed' else FAILURE_ICON
+        tools[tool_name]['tests'].append(f"{test_name} : {icon} ({outcome})")
+
+    for tool, details in tools.items():
+        markdown += f"## {tool} (Version: {details['version']})\n"
+        for test_result in details['tests']:
+            markdown += f"- {test_result}\n"
+        markdown += "\n"
+
+    with open(OUTPUT_REPORT_PATH, 'w') as file:
+        file.write(markdown)
+
+    print(f"Markdown report saved to {OUTPUT_REPORT_PATH}")
+
+def main():
+    image_name = "your_image_name_here"
+    container_name = "test_container"
+    test_files = ["path_to_test_file_1", "path_to_test_file_2"]
+    tools = ["git", "python", "node", "docker"]
+
+    # Step 1: Spin up Docker container
+    container = spin_up_container(image_name, container_name, test_files)
+    if not container:
+        print("Failed to create container.")
+        return
+
+    try:
+        # Step 2: Run tests
+        json_report_path = "/tmp/test_tools/.report.json"
+        test_report = run_tests(container, json_report_path)
+
+        # Step 3: Get tool versions
+        tool_versions = get_tool_versions(container, tools)
+
+        # Step 4: Generate Markdown report
+        generate_markdown(test_report, tool_versions)
+
+    finally:
+        # Cleanup: Stop and remove the container
+        container.stop()
+        container.remove()
+        print(f"Container {container_name} stopped and removed.")
+
+if __name__ == "__main__":
+    main()
