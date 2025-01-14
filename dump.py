@@ -17,9 +17,16 @@ def load_json_file(file_path):
 
 def get_tool_name_from_nodeid(nodeid):
     """Extract tool name from the test nodeid."""
-    # Assuming the tool name is the part of the filename before the first period (e.g., 'git' from 'test_git.py')
-    tool_name = nodeid.split('/')[1].split('.')[0]
-    return tool_name
+    try:
+        # Ensure nodeid contains the expected format
+        if nodeid:
+            # Assuming the tool name is the part of the filename before the first period (e.g., 'git' from 'test_git.py')
+            tool_name = nodeid.split('/')[1].split('.')[0]
+            return tool_name
+        else:
+            return None
+    except IndexError:
+        return None
 
 def generate_markdown_report(test_report, tool_version_report):
     """Generate a Markdown report combining the test results and tool versions."""
@@ -31,24 +38,25 @@ def generate_markdown_report(test_report, tool_version_report):
             # Extract the tool name (assumed from the test file name)
             tool_name = get_tool_name_from_nodeid(collector['nodeid'])
             
-            # Initialize tool status if not already
-            if tool_name not in tools_status:
-                # Get version from the tool_version_report
-                tool_version = tool_version_report.get(tool_name, 'Version not found')
-                tools_status[tool_name] = {
-                    'version': tool_version,
-                    'tests': []
-                }
-            
-            # Add each test result to the tool's record
-            for test in collector['result']:
-                test_outcome = collector['outcome']
-                status_icon = SUCCESS_ICON if test_outcome == 'passed' else FAILURE_ICON
-                tools_status[tool_name]['tests'].append({
-                    'test_name': test['nodeid'].split('::')[1],
-                    'outcome': test_outcome,
-                    'icon': status_icon
-                })
+            if tool_name:  # Only proceed if a valid tool name was found
+                # Initialize tool status if not already
+                if tool_name not in tools_status:
+                    # Get version from the tool_version_report
+                    tool_version = tool_version_report.get(tool_name, 'Version not found')
+                    tools_status[tool_name] = {
+                        'version': tool_version,
+                        'tests': []
+                    }
+                
+                # Add each test result to the tool's record
+                for test in collector['result']:
+                    test_outcome = collector['outcome']
+                    status_icon = SUCCESS_ICON if test_outcome == 'passed' else FAILURE_ICON
+                    tools_status[tool_name]['tests'].append({
+                        'test_name': test['nodeid'].split('::')[1],
+                        'outcome': test_outcome,
+                        'icon': status_icon
+                    })
     
     # Generate the Markdown report
     markdown_report = "# Test Summary Report\n\n"
