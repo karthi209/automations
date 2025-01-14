@@ -7,10 +7,13 @@ import string
 import argparse
 from pathlib import Path
 
-# File paths
-TOOL_VERSION_PATH = 'tool_version.json'
-OUTPUT_REPORT_PATH = 'final_report.md'
-TEST_DIR = Path("/tmp/test_tools")
+# Paths
+TEST_REPORT_PATH = '/tmp/test_tools/.report.json'
+TOOL_VERSION_PATH = '/tmp/test_tools/tool_version.json'
+OUTPUT_REPORT_PATH = '/tmp/test_tools/final_report.md'
+TEST_FILES_DIR = '/path/to/test_files'
+TEST_CONTAINER_DIR = '/tmp/test_tools'
+
 SUCCESS_ICON = "✅"
 FAILURE_ICON = "❌"
 
@@ -18,11 +21,10 @@ def random_container_name():
     """Generate a random Docker container name."""
     return "test_container_" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
-def spin_up_container(image_name, container_name, test_files):
-    """Spin up a Docker container, copy test files, and run setup commands."""
+def spin_up_container(image_name, container_name):
+    """Spin up a Docker container."""
     client = docker.from_env()
     try:
-        # Create and start the container
         container = client.containers.run(
             image=image_name,
             name=container_name,
@@ -31,36 +33,37 @@ def spin_up_container(image_name, container_name, test_files):
             tty=True
         )
         print(f"Container {container_name} started.")
-
-        # Copy test files
-        for test_file in test_files:
-            container.put_archive(
-                TEST_DIR.as_posix(),
-                Path(test_file).read_bytes()
-            )
-        print(f"Test files copied to {container_name}.")
-
-        # Run setup commands
-        container.exec_run("pip install pytest pytest-json-report")
-        print("Dependencies installed.")
         return container
-
     except Exception as e:
         print(f"Error spinning up container: {e}")
         return None
 
-def run_tests(container, json_report_path):
+def copy_test_files(container):
+    """Copy test files into the container."""
+    try:
+        for root, dirs, files in os.walk(TEST_FILES_DIR):
+            for file in files:
+                local_path = os.path.join(root, file)
+                container_path = os.path.join(TEST_CONTAINER_DIR, file)
+                with open(local_path, "rb") as f:
+                    container.put_archive(TEST_CONTAINER_DIR, f.read())
+        print("Test files copied successfully.")
+    except Exception as e:
+        print(f"Error copying test files: {e}")
+
+def run_tests(container):
     """Run pytest inside the container and generate a JSON report."""
     try:
-        result = container.exec_run(f"pytest --json-report --json-report-file={json_report_path}")
+        result = container.exec_run(f"pytest {TEST_CONTAINER_DIR} --json-report --json-report-file={TEST_REPORT_PATH}")
         print(result.output.decode())
-        return json_report_path
+        return TEST_REPORT_PATH
     except Exception as e:
         print(f"Error running tests: {e}")
         return None
 
-def get_tool_versions(container, tools):
-    """Get the version of each tool inside the container."""
+def get_tool_versions(container):
+    """Get tool versions inside the container."""
+    tools = ["git", "python", "node", "docker"]
     versions = {}
     for tool in tools:
         try:
@@ -70,6 +73,8 @@ def get_tool_versions(container, tools):
         except Exception as e:
             versions[tool] = "Error retrieving version"
             print(f"Error getting version for {tool}: {e}")
+    with open(TOOL_VERSION_PATH, 'w') as file:
+        json.dump(versions, file, indent=4)
     return versions
 
 def generate_markdown(test_report, tool_versions):
@@ -77,11 +82,10 @@ def generate_markdown(test_report, tool_versions):
     markdown = "# Test Summary Report\n\n"
 
     tools = {}
-
     for test in test_report.get('tests', []):
         nodeid = test.get('nodeid', '')
         outcome = test.get('outcome', 'unknown')
-        tool_name = extract_tool_name(nodeid)
+        tool_name = nodeid.split('/')[1].split('_')[1] if '/' in nodeid else "Unknown"
         test_name = nodeid.split('::')[-1]
 
         if tool_name not in tools:
@@ -111,28 +115,39 @@ def main():
 
     image_name = args.image
     container_name = random_container_name()
-    test_files = ["path_to_test_file_1", "path_to_test_file_2"]
-    tools = ["git", "python", "node", "docker"]
 
-    # Step 1: Spin up Docker container
-    container = spin_up_container(image_name, container_name, test_files)
+    # Spin up Docker container
+    container = spin_up_container(image_name, container_name)
     if not container:
         print("Failed to create container.")
         return
 
     try:
-        # Step 2: Run tests
-        json_report_path = "/tmp/test_tools/.report.json"
-        test_report = run_tests(container, json_report_path)
+        # Copy test files
+        copy_test_files(container)
 
-        # Step 3: Get tool versions
-        tool_versions = get_tool_versions(container, tools)
+        # Install dependencies
+        container.exec_run("pip install pytest pytest-json-report")
+        print("Dependencies installed.")
 
-        # Step 4: Generate Markdown report
+        # Run tests
+        test_report_path = run_tests(container)
+        if not test_report_path:
+            print("Test execution failed.")
+            return
+
+        # Load test results
+        with open(test_report_path, 'r') as file:
+            test_report = json.load(file)
+
+        # Get tool versions
+        tool_versions = get_tool_versions(container)
+
+        # Generate Markdown report
         generate_markdown(test_report, tool_versions)
 
     finally:
-        # Cleanup: Stop and remove the container
+        # Cleanup: Stop and remove container
         container.stop()
         container.remove()
         print(f"Container {container_name} stopped and removed.")
