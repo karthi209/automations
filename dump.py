@@ -3,8 +3,8 @@ import json
 
 def parse_test_report(report_file):
     """
-    Parses the pytest JSON report and generates a Markdown summary with tool names
-    and the results for version, installation path, symlink, and functionality tests.
+    Parses the pytest JSON report and generates a Markdown summary with tool names,
+    their version, the results for the tests, and tool health.
 
     :param report_file: Path to the pytest JSON report.
     :return: Markdown formatted report.
@@ -24,39 +24,44 @@ def parse_test_report(report_file):
             # Extract the tool name from the test name (assuming tool names are part of the test nodeid)
             tool_name = test_name.split("::")[0]  # Use the first part of the test name as tool name
 
+            # Extract the tool version if it's part of the test message
+            version = None
+            if "version" in message:
+                version = message.split(":")[-1].strip()
+
             # Prepare outcome symbols for pass/fail
             outcome_symbol = "✅" if outcome == "passed" else "❌" if outcome == "failed" else "⏸️"
 
-            # Store results for the tool in the form of (tool_name, version, install_path, symlink, functionality)
+            # Store results for the tool in the form of (tool_name, version, number of passed tests, total tests)
             tool_result = next((tool for tool in tools_results if tool["tool_name"] == tool_name), None)
             if tool_result is None:
                 tool_result = {
                     "tool_name": tool_name,
-                    "version_test": "❌",
-                    "install_path_test": "❌",
-                    "symlink_test": "❌",
-                    "functional_test": "❌",
+                    "version": version,
+                    "passed_tests": 0,
+                    "total_tests": 0,
                 }
                 tools_results.append(tool_result)
 
-            # Assign the appropriate outcome based on the test name
-            if "version" in test_name:
-                tool_result["version_test"] = outcome_symbol
-            elif "install_path" in test_name:
-                tool_result["install_path_test"] = outcome_symbol
-            elif "symlink" in test_name:
-                tool_result["symlink_test"] = outcome_symbol
-            elif "functional" in test_name:
-                tool_result["functional_test"] = outcome_symbol
+            # Increment the number of tests for this tool
+            tool_result["total_tests"] += 1
+            if outcome == "passed":
+                tool_result["passed_tests"] += 1
 
         # Start creating the markdown report
         markdown_report = f"## Test Results Summary\n\n"
-        markdown_report += "| Tool Name | Version Test | Install Path Test | Symlink Test | Functional Test |\n"
-        markdown_report += "|-----------|--------------|-------------------|--------------|-----------------|\n"
+        markdown_report += "| Tool Name | Tool Version | Test Results | Tool Health |\n"
+        markdown_report += "|-----------|--------------|--------------|-------------|\n"
 
         # Add rows for each tool's result
         for tool_result in tools_results:
-            markdown_report += f"| {tool_result['tool_name']} | {tool_result['version_test']} | {tool_result['install_path_test']} | {tool_result['symlink_test']} | {tool_result['functional_test']} |\n"
+            test_results = f"{tool_result['passed_tests']}/{tool_result['total_tests']}"
+            version = tool_result["version"] if tool_result["version"] else "N/A"
+            
+            # Determine the tool health based on test results
+            tool_health = "✅" if tool_result["passed_tests"] == tool_result["total_tests"] else "❌"
+            
+            markdown_report += f"| {tool_result['tool_name']} | {version} | {test_results} | {tool_health} |\n"
 
         return markdown_report
 
