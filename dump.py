@@ -1,91 +1,94 @@
 import subprocess
-import json
+import time
+import os
 
-def main():
+def run_docker_tests(image_name, test_scripts_dir, output_report):
+    container_name = f"test-container-{int(time.time())}"
+
     try:
-        # Get Maven version
-        version_output = subprocess.check_output(["mvn", "--version"]).decode("utf-8").splitlines()
-        version = version_output[0].split()[2]  # Extract version (e.g., "Apache Maven 3.6.3")
+        # Pull the Docker image
+        print(f"Pulling Docker image {image_name}...")
+        subprocess.check_call(["docker", "pull", image_name])
 
-        # Get Maven installation path
-        path = subprocess.check_output(["which", "mvn"]).decode("utf-8").strip()
+        # Start the container
+        print(f"Starting container {container_name}...")
+        subprocess.check_call([
+            "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
+        ])
 
-        # Get symlink details
-        symlink = subprocess.check_output(["ls", "-l", path]).decode("utf-8").strip()
+        # Copy test scripts into the container
+        print(f"Copying test scripts from {test_scripts_dir} to the container...")
+        subprocess.check_call(["docker", "cp", test_scripts_dir, f"{container_name}:/test_tools"])
 
-        # Functionality test: Create a sample POM file and validate it
-        functionality_test = subprocess.check_output(["mvn", "-version"]).decode("utf-8").strip()
+        # Run pytest with JSON reporting in the container
+        print("Running pytest in the container with JSON reporting...")
+        subprocess.check_call([
+            "docker", "exec", container_name, "pytest", "/test_tools",
+            "--json-report", "--json-report-file", "/test_tools/test_report.json"
+        ])
 
-        results = {
-            "Version": version,
-            "Installation Path": path,
-            "Symlink": symlink,
-            "Functionality Test": functionality_test,
-        }
-    except Exception as e:
-        results = {"Error": str(e)}
+        # Copy the JSON report back to the host
+        print(f"Copying the JSON report to {output_report}...")
+        subprocess.check_call(["docker", "cp", f"{container_name}:/test_tools/test_report.json", output_report])
 
-    print(json.dumps(results))
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
+    finally:
+        # Stop and remove the container
+        print(f"Stopping and removing container {container_name}...")
+        subprocess.check_call(["docker", "stop", container_name])
+        subprocess.check_call(["docker", "rm", container_name])
+
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) != 4:
+        print("Usage: python test_manager.py <docker_image_name> <test_scripts_dir> <output_report>")
+        sys.exit(1)
+
+    docker_image_name = sys.argv[1]
+    test_scripts_directory = sys.argv[2]
+    output_report_file = sys.argv[3]
+
+    run_docker_tests(docker_image_name, test_scripts_directory, output_report_file)
 
 
 
 
+import os
 import subprocess
-import json
 
-def main():
-    try:
-        # Get Git version
-        version_output = subprocess.check_output(["git", "--version"]).decode("utf-8").strip()
-        version = version_output.split()[2]  # Extract version (e.g., "git version 2.30.2")
+def test_git_version():
+    result = subprocess.run(["git", "--version"], capture_output=True, text=True)
+    assert result.returncode == 0, "Git is not installed or not functioning correctly."
+    assert "git version" in result.stdout, "Git version not found in output."
 
-        # Get Git installation path
-        path = subprocess.check_output(["which", "git"]).decode("utf-8").strip()
+def test_git_install_path():
+    result = subprocess.run(["which", "git"], capture_output=True, text=True)
+    assert result.returncode == 0, "Git is not installed in PATH."
+    install_path = result.stdout.strip()
+    assert os.path.exists(install_path), f"Git installation path {install_path} does not exist."
 
-        # Get symlink details
-        symlink = subprocess.check_output(["ls", "-l", path]).decode("utf-8").strip()
-
-        # Functionality test: Initialize a Git repository in a temp directory
-        functionality_test = "Git initialized successfully"
-        try:
-            subprocess.check_output(["git", "init", "/tmp/test_git_repo"], stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            functionality_test = f"Error during functionality test: {e.output.decode('utf-8').strip()}"
-
-        results = {
-            "Version": version,
-            "Installation Path": path,
-            "Symlink": symlink,
-            "Functionality Test": functionality_test,
-        }
-    except Exception as e:
-        results = {"Error": str(e)}
-
-    print(json.dumps(results))
-
-if __name__ == "__main__":
-    main()
+def test_git_symlink():
+    result = subprocess.run(["which", "git"], capture_output=True, text=True)
+    assert result.returncode == 0, "Git is not installed in PATH."
+    install_path = result.stdout.strip()
+    if os.path.islink(install_path):
+        symlink_target = os.readlink(install_path)
+        assert os.path.exists(symlink_target), f"Symlink target {symlink_target} does not exist."
 
 
 
+import os
+import subprocess
 
-{
-    "Python3": {
-        "Expected Version": "3.8.10",
-        "Expected Installation Path": "/usr/bin/python3",
-        "Expected Symlink": "python3 -> /usr/bin/python3.8"
-    },
-    "Maven": {
-        "Expected Version": "3.6.3",
-        "Expected Installation Path": "/usr/bin/mvn",
-        "Expected Symlink": "mvn -> /usr/share/maven/bin/mvn"
-    },
-    "Git": {
-        "Expected Version": "2.30.2",
-        "Expected Installation Path": "/usr/bin/git",
-        "Expected Symlink": "git -> /usr/share/git-core/git"
-    }
-}
+def test_maven_version():
+    result = subprocess.run(["mvn", "--version"], capture_output=True, text=True)
+    assert result.returncode == 0, "Maven is not installed or not functioning correctly."
+    assert "Apache Maven" in result.stdout, "Maven version not found in output."
+
+def test_maven_install_path():
+    result = subprocess.run(["which", "mvn"], capture_output=True, text=True)
+    assert result.returncode == 0, "Maven is not installed in PATH."
+    install_path = result.stdout.strip()
+    assert os.path.exists(install_path), f"Maven installation path {install_path} does not exist."
