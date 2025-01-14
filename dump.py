@@ -8,17 +8,15 @@ TOOL_VERSION_CONFIG = 'tool_version_config.json'
 def get_version(tool, command):
     try:
         # Execute the command and capture the output
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        result = subprocess.check_output(command, shell=True, text=True)
         
-        # Check if the command ran successfully
-        if result.returncode == 0:
-            version = result.stdout.strip()
-            if version:
-                return f"{tool}: {version}"
-            else:
-                return f"{tool}: Version not found"
+        # If we get a result, strip and return the version
+        if result:
+            return f"{tool}: {result.strip()}"
         else:
-            return f"{tool}: Error executing command"
+            return f"{tool}: Version not found"
+    except subprocess.CalledProcessError:
+        return f"{tool}: Error executing command"
     except Exception as e:
         return f"{tool}: {str(e)}"
 
