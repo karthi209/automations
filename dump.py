@@ -22,13 +22,13 @@ def random_container_name():
     return "test_container_" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
 def spin_up_container(image_name, container_name):
-    """Spin up a Docker container."""
+    """Spin up a Docker container in detached mode and keep it alive."""
     client = docker.from_env()
     try:
         container = client.containers.run(
             image=image_name,
             name=container_name,
-            command="sleep 300",
+            command="tail -f /dev/null",  # Keeps the container running
             detach=True,
             tty=True
         )
@@ -37,6 +37,25 @@ def spin_up_container(image_name, container_name):
     except Exception as e:
         print(f"Error spinning up container: {e}")
         return None
+
+def setup_pyenv(container):
+    """Set up pyenv inside the container."""
+    try:
+        commands = [
+            "curl https://pyenv.run | bash",
+            "export PATH=\"$HOME/.pyenv/bin:$PATH\"",
+            "eval \"$(pyenv init --path)\"",
+            "eval \"$(pyenv virtualenv-init -)\"",
+            "pyenv install 3.11.10",
+            "pyenv virtualenv 3.11.10 test_env",
+            "pyenv activate test_env",
+            "pip install pytest pytest-json-report"
+        ]
+        setup_command = " && ".join(commands)
+        result = container.exec_run(f"bash -c '{setup_command}'")
+        print(result.output.decode())
+    except Exception as e:
+        print(f"Error setting up pyenv: {e}")
 
 def copy_test_files(container):
     """Copy test files into the container."""
@@ -54,7 +73,8 @@ def copy_test_files(container):
 def run_tests(container):
     """Run pytest inside the container and generate a JSON report."""
     try:
-        result = container.exec_run(f"pytest {TEST_CONTAINER_DIR} --json-report --json-report-file={TEST_REPORT_PATH}")
+        command = f"bash -c 'source ~/.pyenv/versions/test_env/bin/activate && pytest {TEST_CONTAINER_DIR} --json-report --json-report-file={TEST_REPORT_PATH}'"
+        result = container.exec_run(command)
         print(result.output.decode())
         return TEST_REPORT_PATH
     except Exception as e:
@@ -116,19 +136,18 @@ def main():
     image_name = args.image
     container_name = random_container_name()
 
-    # Spin up Docker container
+    # Spin up Docker container in detached mode
     container = spin_up_container(image_name, container_name)
     if not container:
         print("Failed to create container.")
         return
 
     try:
+        # Set up pyenv
+        setup_pyenv(container)
+
         # Copy test files
         copy_test_files(container)
-
-        # Install dependencies
-        container.exec_run("pip install pytest pytest-json-report")
-        print("Dependencies installed.")
 
         # Run tests
         test_report_path = run_tests(container)
