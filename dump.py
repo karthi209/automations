@@ -1,220 +1,109 @@
 import subprocess
+import time
+import sys
 import os
-import json
-import docker
-from pathlib import Path
-from typing import Dict, Optional
 import logging
-import shutil
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-class DockerTestRunner:
-    """Manages Docker container operations and test execution."""
+def run_docker_tests(image_name):
+    container_name = f"test-container-{int(time.time())}"
+    container_tmp_dir = "/tmp/test_tools"  # Working directory inside the container
+    host_test_scripts_dir = os.path.abspath("./test_tools")  # Default location of test scripts on the host
+    host_output_report = os.path.abspath("./test_report.json")  # Default location for the JSON report on the host
 
-    def __init__(
-        self,
-        docker_image_name: str,
-        test_files_dir: str,
-        container_dir: str = '/tmp/test_tools'
-    ):
-        """
-        Initialize the Docker test runner with configuration parameters.
-        """
-        self.docker_image_name = docker_image_name
-        self.test_files_dir = Path(test_files_dir)
-        self.container_dir = Path(container_dir)
-        self.container_name = f"test_container_{os.urandom(4).hex()}"
+    try:
+        # Pull the Docker image
+        logging.info(f"Pulling Docker image {image_name}...")
+        subprocess.check_call(["docker", "pull", image_name])
 
-        self.paths = {
-            'test_report': self.container_dir / 'test_report.json',
-            'tool_version': self.container_dir / 'tool_version.json',
-            'output_report': self.container_dir / 'final_report.md',
-            'venv': self.container_dir / 'venv'
-        }
+        # Start the container in detached mode
+        logging.info(f"Starting container {container_name}...")
+        subprocess.check_call(["docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"])
 
-        self.SUCCESS_ICON = "✅"
-        self.FAILURE_ICON = "❌"
+        # Prepare /tmp/test_tools directory inside the container
+        logging.info("Preparing /tmp/test_tools directory inside the container...")
+        subprocess.check_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir])
+        subprocess.check_call(["docker", "exec", container_name, "chmod", "777", container_tmp_dir])
 
-        try:
-            self.client = docker.from_env()
-        except docker.errors.DockerException as e:
-            logger.error(f"Failed to initialize Docker client: {e}")
-            raise
+        # Copy test scripts to /tmp folder inside the container
+        logging.info(f"Copying test scripts to the container at {container_tmp_dir}...")
+        subprocess.check_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
 
-    def _execute_container_command(
-        self,
-        container: docker.models.containers.Container,
-        command: str
-    ) -> tuple[int, str]:
-        """Execute a command in the container and return results."""
-        result = container.exec_run(command)
-        output = result.output.decode('utf-8')
-        if result.exit_code != 0:
-            logger.warning(f"Command '{command}' failed with exit code {result.exit_code}")
-            logger.warning(f"Output: {output}")
-        return result.exit_code, output
+        # Verify the files inside the container by listing the contents of /tmp/test_tools
+        logging.info("Listing contents of /tmp/test_tools inside the container...")
+        result = subprocess.check_output(["docker", "exec", container_name, "ls", "-la", container_tmp_dir])
+        logging.info(f"Container contents:\n{result.decode('utf-8')}")
 
-    def setup_virtual_environment(self, container: docker.models.containers.Container) -> bool:
-        """Set up Python virtual environment in the container."""
-        try:
-            exit_code, _ = self._execute_container_command(
-                container,
-                f"python3 -m venv {self.paths['venv']}"
-            )
-            if exit_code != 0:
-                return False
+        # Create a virtual environment inside the container
+        logging.info("Creating virtual environment in the container...")
+        subprocess.check_call(["docker", "exec", container_name, "python3", "-m", "venv", f"{container_tmp_dir}/venv"])
 
-            exit_code, _ = self._execute_container_command(
-                container,
-                f"source {self.paths['venv']}/bin/activate && pip install pytest pytest-json-report"
-            )
-            return exit_code == 0
-        except Exception as e:
-            logger.error(f"Failed to set up virtual environment: {e}")
-            return False
+        # Install pytest and dependencies inside the virtual environment
+        logging.info("Installing pytest in the virtual environment...")
+        subprocess.check_call(["docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install", "pytest", "pytest-json-report"])
 
-    def run_tests(self, container: docker.models.containers.Container) -> Optional[Path]:
-        """Run pytest inside the container and generate JSON report."""
-        try:
-            command = (
-                f"source {self.paths['venv']}/bin/activate && "
-                f"PYTHONPATH={self.container_dir} pytest "
-                f"--json-report --json-report-file={self.paths['test_report']}"
-            )
+        # Run pytest inside the container with JSON report generation
+        logging.info("Running pytest in the container with JSON reporting...")
+        subprocess.check_call(["docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
+                               "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"])
 
-            exit_code, output = self._execute_container_command(container, command)
+        # Copy the JSON report back to the host
+        logging.info(f"Copying the JSON report to {host_output_report}...")
+        subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report])
 
-            logger.info("Pytest output:")
-            logger.info(output)
+        logging.info(f"Test completed. Report saved at {host_output_report}")
 
-            return self.paths['test_report'] if exit_code == 0 else None
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error: {e}")
 
-        except Exception as e:
-            logger.error(f"Failed to run tests: {e}")
-            return None
+    finally:
+        # Stop and remove the container
+        logging.info(f"Stopping and removing container {container_name}...")
+        subprocess.check_call(["docker", "stop", container_name])
+        subprocess.check_call(["docker", "rm", container_name])
 
-    @staticmethod
-    def load_json(file_path: Path) -> Dict:
-        """Load and parse a JSON file."""
-        try:
-            with open(file_path, 'r') as file:
-                return json.load(file)
-        except FileNotFoundError:
-            logger.error(f"File not found: {file_path}")
-        except json.JSONDecodeError:
-            logger.error(f"Failed to parse JSON from {file_path}")
-        return {}
-
-    @staticmethod
-    def extract_tool_name(nodeid: str) -> str:
-        """Extract tool name from pytest nodeid."""
-        try:
-            parts = nodeid.split('/')
-            if len(parts) > 1:
-                return parts[1].split('.')[0]
-        except Exception as e:
-            logger.error(f"Failed to extract tool name from {nodeid}: {e}")
-        return "Unknown"
-
-    def generate_markdown(self, test_report: Dict, tool_versions: Dict) -> None:
-        """Generate markdown report from test results and tool versions."""
-        try:
-            markdown = "# Test Summary Report\n\n"
-            tools = {}
-
-            for test in test_report.get('tests', []):
-                nodeid = test.get('nodeid', '')
-                outcome = test.get('outcome', 'unknown')
-                tool_name = self.extract_tool_name(nodeid)
-                test_name = nodeid.split('::')[-1]
-
-                if tool_name not in tools:
-                    tools[tool_name] = {
-                        "version": tool_versions.get(tool_name, "Version not found"),
-                        "tests": []
-                    }
-
-                icon = self.SUCCESS_ICON if outcome == 'passed' else self.FAILURE_ICON
-                tools[tool_name]['tests'].append(f"{test_name} : {icon} ({outcome})")
-
-            for tool, details in tools.items():
-                markdown += f"## {tool} (Version: {details['version']})\n"
-                for test_result in details['tests']:
-                    markdown += f"- {test_result}\n"
-                markdown += "\n"
-
-            with open(self.paths['output_report'], 'w') as file:
-                file.write(markdown)
-
-            logger.info(f"Markdown report saved to {self.paths['output_report']}")
-
-        except Exception as e:
-            logger.error(f"Failed to generate markdown report: {e}")
-
-    def run(self) -> None:
-        """Execute the complete test suite in a Docker container."""
-        container = None
-        try:
-            container = self.client.containers.run(
-                self.docker_image_name,
-                name=self.container_name,
-                detach=True,
-                working_dir='/tmp',
-            )
-            logger.info(f"Container {self.container_name} started successfully")
-
-            # Copy the test files from the host to the container
-            container_path = "/tmp/test_tools"
-            for file_or_dir in self.test_files_dir.iterdir():
-                if file_or_dir.is_dir():
-                    shutil.copytree(file_or_dir, container_path / file_or_dir.name)
-                else:
-                    shutil.copy(file_or_dir, container_path / file_or_dir.name)
-
-            if not self.setup_virtual_environment(container):
-                raise RuntimeError("Failed to set up virtual environment")
-
-            test_report_path = self.run_tests(container)
-            if not test_report_path:
-                raise RuntimeError("Failed to generate test report")
-
-            # Copy the test report and tool version files back to the host
-            with open(self.paths['test_report'], 'wb') as f:
-                f.write(container.exec_run(f"cat {test_report_path}").output)
-
-            with open(self.paths['tool_version'], 'wb') as f:
-                f.write(container.exec_run(f"cat {self.paths['tool_version']}").output)
-
-            test_report = self.load_json(self.paths['test_report'])
-            tool_versions = self.load_json(self.paths['tool_version'])
-
-            if test_report and tool_versions:
-                self.generate_markdown(test_report, tool_versions)
-
-            # Copy the final report back to the host
-            shutil.copy(self.paths['output_report'], './final_report.md')
-
-        except Exception as e:
-            logger.error(f"Test execution failed: {e}")
-            raise
-        finally:
-            if container:
-                try:
-                    container.stop()
-                    container.remove()
-                    logger.info(f"Container {self.container_name} cleaned up")
-                except Exception as e:
-                    logger.error(f"Failed to clean up container: {e}")
 
 if __name__ == "__main__":
-    runner = DockerTestRunner(
-        docker_image_name="your-docker-image-name",  # Replace with your image name
-        test_files_dir="./tool_tests" # Path to your test files
-    )
-    runner.run()
+    if len(sys.argv) != 2:
+        print("Usage: python test_manager.py <docker_image_name>")
+        sys.exit(1)
+
+    docker_image_name = sys.argv[1]
+    run_docker_tests(docker_image_name)
+
+
+
+
+
+import subprocess
+import pytest
+
+# Function to fetch the tool version
+def get_tool_version(tool_name):
+    try:
+        version = subprocess.check_output([tool_name, "--version"]).decode('utf-8').strip()
+        return version
+    except subprocess.CalledProcessError as e:
+        pytest.fail(f"Failed to get {tool_name} version: {str(e)}")
+
+# Test to verify the tool version and run your actual test logic
+def test_git_version():
+    git_version = get_tool_version("git")
+    # Assuming you want to verify a minimum version
+    assert git_version >= "2.0", f"Git version {git_version} is too old"
+
+    # Your other tests for git functionality here
+    assert subprocess.check_output(["git", "--version"])  # Simple test to verify git is functional
+
+@pytest.mark.tool_version("git")
+def test_git_tool():
+    # You can call a specific test function here that checks tool functionality
+    pass
+
+
+
+[pytest]
+markers =
+    tool_version(name): mark the test as related to a specific tool version
