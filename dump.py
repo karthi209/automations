@@ -4,11 +4,18 @@ def _execute_container_command(
     command: str
 ) -> tuple[int, str]:
     """Execute a command in the container and return results."""
-    result = container.exec_run(command)
-    exit_code, output = result  # Unpack the result tuple properly
-    output = output.decode('utf-8')  # Decode the byte string to a regular string
-    
-    if exit_code != 0:
-        logger.warning(f"Command '{command}' failed with exit code {exit_code}")
-        logger.warning(f"Output: {output}")
-    return exit_code, output
+    try:
+        result = container.exec_run(command)
+        # Ensure that result is a tuple
+        if isinstance(result, tuple) and len(result) == 2:
+            exit_code, output = result
+            output = output.decode('utf-8')  # Decode from bytes to string
+            if exit_code != 0:
+                logger.warning(f"Command '{command}' failed with exit code {exit_code}")
+                logger.warning(f"Output: {output}")
+            return exit_code, output
+        else:
+            raise ValueError(f"Unexpected result format: {result}")
+    except Exception as e:
+        logger.error(f"Failed to execute command '{command}': {e}")
+        return 1, str(e)  # Return error code and message
