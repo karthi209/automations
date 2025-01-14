@@ -1,83 +1,95 @@
-import subprocess
-import time
-import sys
+import json
 import os
 
-def run_docker_tests(image_name):
-    container_name = f"test-container-{int(time.time())}"
-    container_tmp_dir = "/tmp/test_tools"  # Working directory inside the container
-    host_test_scripts_dir = os.path.abspath("./test_tools")  # Default location of test scripts on the host
-    host_output_report = os.path.abspath("./test_report.json")  # Default location for the JSON report on the host
-    host_config_file = os.path.abspath("./tool_version_config.json")  # Path to the tool version config file on the host
-    host_get_tool_version_script = os.path.abspath("./get_tool_version.py")  # Path to the get_tool_version.py script
-    host_tool_version_output = os.path.abspath("./tool_versions.json")  # Path to store the tool version output file
+# Paths to the input JSON files
+TEST_REPORT_FILE = 'test_report.json'
+TOOL_VERSIONS_FILE = 'tool_versions.json'
 
-    # Log to store any errors
-    error_log = []
+# Path to the output Markdown file
+OUTPUT_MD_FILE = 'test_summary.md'
 
-    def safe_subprocess_call(command, description):
-        try:
-            print(f"Running: {description}...")
-            subprocess.check_call(command)
-        except subprocess.CalledProcessError as e:
-            error_log.append(f"Error during {description}: {e}")
-            print(f"Error during {description}: {e}")
+def load_json(file_path):
+    """Load a JSON file and return its content."""
+    try:
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: {file_path} file not found.")
+        return None
+    except json.JSONDecodeError:
+        print(f"Error: Failed to parse {file_path}, invalid JSON.")
+        return None
 
-    # Pull the Docker image
-    safe_subprocess_call(["docker", "pull", image_name], "pull Docker image")
+def generate_tool_versions_section(tool_versions):
+    """Generate a Markdown section for tool versions."""
+    if not tool_versions:
+        return "### Tool Versions\nNo tool version data available.\n"
+    
+    section = "### Tool Versions\n\n"
+    for tool, version in tool_versions.items():
+        section += f"- **{tool}**: {version}\n"
+    section += "\n"
+    return section
 
-    # Start the container in detached mode
-    safe_subprocess_call(["docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"], "start Docker container")
+def generate_test_results_section(test_report):
+    """Generate a Markdown section for test results."""
+    if not test_report:
+        return "### Test Results\nNo test results available.\n"
+    
+    section = "### Test Results\n\n"
+    
+    # Extract relevant information from the JSON test report
+    summary = test_report.get("summary", {})
+    total_tests = summary.get("total", 0)
+    passed_tests = summary.get("passed", 0)
+    failed_tests = summary.get("failed", 0)
+    skipped_tests = summary.get("skipped", 0)
+    
+    section += f"- **Total Tests**: {total_tests}\n"
+    section += f"- **Passed**: {passed_tests}\n"
+    section += f"- **Failed**: {failed_tests}\n"
+    section += f"- **Skipped**: {skipped_tests}\n"
+    
+    # List of failed tests, if any
+    if failed_tests > 0:
+        section += "\n#### Failed Tests\n"
+        for test in test_report.get("tests", []):
+            if test.get("outcome") == "failed":
+                section += f"- {test.get('test', 'Unknown Test')}: {test.get('message', 'No message')}\n"
+    
+    section += "\n"
+    return section
 
-    # Prepare /tmp/test_tools directory inside the container
-    safe_subprocess_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir], "prepare /tmp/test_tools directory")
-    safe_subprocess_call(["docker", "exec", container_name, "chmod", "777", container_tmp_dir], "set permissions for /tmp/test_tools directory")
+def generate_markdown_report(test_report, tool_versions):
+    """Generate the full Markdown report combining test results and tool versions."""
+    report = "# Test Summary Report\n\n"
+    
+    # Generate the sections
+    report += generate_tool_versions_section(tool_versions)
+    report += generate_test_results_section(test_report)
+    
+    return report
 
-    # Copy test scripts and tool_version_config.json to /tmp folder inside the container
-    safe_subprocess_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"], "copy test scripts")
-    safe_subprocess_call(["docker", "cp", host_config_file, f"{container_name}:{container_tmp_dir}/tool_version_config.json"], "copy tool_version_config.json")
-    safe_subprocess_call(["docker", "cp", host_get_tool_version_script, f"{container_name}:{container_tmp_dir}/get_tool_version.py"], "copy get_tool_version.py script")
+def save_report(report, output_file):
+    """Save the generated Markdown report to a file."""
+    with open(output_file, 'w') as f:
+        f.write(report)
+    print(f"Markdown report saved to {output_file}")
 
-    # Verify the files inside the container by listing the contents of /tmp/test_tools
-    safe_subprocess_call(["docker", "exec", container_name, "ls", "-la", container_tmp_dir], "list contents of /tmp/test_tools")
-
-    # Run get_tool_version.py to fetch the tool versions
-    safe_subprocess_call(["docker", "exec", container_name, "python3", f"{container_tmp_dir}/get_tool_version.py"], "run get_tool_version.py")
-
-    # Copy the tool versions output file back to the host
-    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/tool_versions.json", host_tool_version_output], "copy tool versions output")
-
-    # Create a virtual environment inside the container
-    safe_subprocess_call(["docker", "exec", container_name, "python3", "-m", "venv", f"{container_tmp_dir}/venv"], "create virtual environment")
-
-    # Install pytest and dependencies inside the virtual environment
-    safe_subprocess_call(["docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install", "pytest", "pytest-json-report"], "install pytest")
-
-    # Run pytest inside the container with JSON report generation
-    safe_subprocess_call(["docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
-                          "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"], "run pytest with JSON reporting")
-
-    # Copy the JSON report back to the host
-    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report], "copy JSON report to host")
-
-    print(f"Test completed. Report saved at {host_output_report}")
-    print(f"Tool versions saved at {host_tool_version_output}")
-
-    # Log errors if any
-    if error_log:
-        print("Errors occurred during the execution:")
-        for log in error_log:
-            print(log)
-
-    # Stop and remove the container
-    safe_subprocess_call(["docker", "stop", container_name], "stop container")
-    safe_subprocess_call(["docker", "rm", container_name], "remove container")
-
+def main():
+    # Load the test report and tool versions data
+    test_report = load_json(TEST_REPORT_FILE)
+    tool_versions = load_json(TOOL_VERSIONS_FILE)
+    
+    if test_report is None or tool_versions is None:
+        print("Error: Unable to generate the report due to missing or invalid data.")
+        return
+    
+    # Generate the Markdown report
+    report = generate_markdown_report(test_report, tool_versions)
+    
+    # Save the report to a file
+    save_report(report, OUTPUT_MD_FILE)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python test_manager.py <docker_image_name>")
-        sys.exit(1)
-
-    docker_image_name = sys.argv[1]
-    run_docker_tests(docker_image_name)
+    main()
