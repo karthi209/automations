@@ -12,6 +12,13 @@ def run_docker_tests(image_name):
     host_config_file = "./tool_version_config.json"  # Path to the tool version config file on the host
     host_get_tool_version_script = "./get_tool_version.py"  # Path to the get_tool_version.py script
 
+    # Debugging: Ensure the config file exists at the expected path
+    if not os.path.exists(host_config_file):
+        print(f"Error: The config file '{host_config_file}' was not found.")
+        sys.exit(1)
+    else:
+        print(f"Found config file at: {host_config_file}")
+
     try:
         # Pull the Docker image
         print(f"Pulling Docker image {image_name}...")
@@ -31,6 +38,11 @@ def run_docker_tests(image_name):
         subprocess.check_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
         subprocess.check_call(["docker", "cp", host_config_file, f"{container_name}:{container_tmp_dir}/tool_version_config.json"])
         subprocess.check_call(["docker", "cp", host_get_tool_version_script, f"{container_name}:{container_tmp_dir}/get_tool_version.py"])
+
+        # Check if the file was copied successfully
+        print(f"Checking if {container_tmp_dir}/tool_version_config.json exists inside the container...")
+        result = subprocess.check_output(["docker", "exec", container_name, "ls", f"{container_tmp_dir}/tool_version_config.json"])
+        print(f"File found inside container: {result.decode('utf-8').strip()}")
 
         # Create a virtual environment inside the container
         print("Creating virtual environment in the container...")
