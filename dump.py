@@ -2,6 +2,7 @@ import subprocess
 import time
 import sys
 import os
+import json
 
 def run_docker_tests(image_name):
     container_name = f"test-container-{int(time.time())}"
@@ -37,6 +38,15 @@ def run_docker_tests(image_name):
         print("Installing pytest in the virtual environment...")
         subprocess.check_call([ "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install", "pytest", "pytest-json-report"])
 
+        # Run get_tool_version.py inside the container to gather tool versions
+        print("Running get_tool_version.py to gather tool versions...")
+        subprocess.check_call([ "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/python", f"{container_tmp_dir}/get_tool_version.py"])
+
+        # Read the generated tool versions JSON data
+        print("Reading tool version metadata...")
+        result = subprocess.check_output([ "docker", "exec", container_name, f"cat {container_tmp_dir}/tool_versions.json" ])
+        tool_versions = json.loads(result)
+
         # Run pytest inside the container with JSON report generation
         print("Running pytest in the container with JSON reporting...")
         subprocess.check_call([ "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
@@ -45,6 +55,18 @@ def run_docker_tests(image_name):
         # Copy the JSON report back to the host
         print(f"Copying the JSON report to {host_output_report}...")
         subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report])
+
+        # Now, merge the tool versions into the pytest JSON report as metadata
+        with open(host_output_report, "r") as report_file:
+            pytest_report = json.load(report_file)
+
+        pytest_report['metadata'] = {
+            'tool_versions': tool_versions
+        }
+
+        # Write the updated report back to the file
+        with open(host_output_report, "w") as report_file:
+            json.dump(pytest_report, report_file, indent=4)
 
         print(f"Test completed. Report saved at {host_output_report}")
     
