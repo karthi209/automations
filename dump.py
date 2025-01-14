@@ -1,6 +1,5 @@
 import subprocess
 import time
-import sys
 
 def run_docker_tests(image_name):
     container_name = f"test-container-{int(time.time())}"
@@ -13,13 +12,13 @@ def run_docker_tests(image_name):
         print(f"Pulling Docker image {image_name}...")
         subprocess.check_call(["docker", "pull", image_name])
 
-        # Start the container in detached mode
+        # Start the container as root
         print(f"Starting container {container_name}...")
         subprocess.check_call([
             "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
         ])
 
-        # Prepare /tmp/test_tools directory inside the container
+        # Create and set permissions for the /tmp/test_tools directory
         print("Preparing /tmp/test_tools directory inside the container...")
         subprocess.check_call([
             "docker", "exec", container_name, "mkdir", "-p", container_tmp_dir
@@ -28,44 +27,41 @@ def run_docker_tests(image_name):
             "docker", "exec", container_name, "chmod", "777", container_tmp_dir
         ])
 
-        # Copy test scripts to /tmp folder inside the container
+        # Copy test scripts into the /tmp folder inside the container
         print(f"Copying test scripts from {host_test_scripts_dir} to the container at {container_tmp_dir}...")
         subprocess.check_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
 
-        # Create a virtual environment inside the container
+        # Create a virtual environment inside the container in the /tmp directory
         print("Creating virtual environment in the container...")
         subprocess.check_call([
             "docker", "exec", container_name, "python3", "-m", "venv", f"{container_tmp_dir}/venv"
         ])
 
-        # Install pytest and dependencies inside the virtual environment
+        # Install pytest and dependencies in the virtual environment
         print("Installing pytest in the virtual environment...")
         subprocess.check_call([
-            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install", "pytest", "pytest-json-report"
+            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install",
+            "pytest", "pytest-json-report"
         ])
 
-        # Run pytest inside the container with JSON report generation
+        # Run pytest in the virtual environment with JSON reporting
         print("Running pytest in the container with JSON reporting...")
-        subprocess.check_call([
-            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
-            "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"
-        ])
-
-        # Debug: Check if the file exists inside the container
-        print("Checking if the JSON report exists inside the container...")
-        subprocess.check_call([
-            "docker", "exec", container_name, "ls", "-l", f"{container_tmp_dir}/test_report.json"
-        ])
+        try:
+            subprocess.check_call([
+                "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
+                "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"
+            ])
+        except subprocess.CalledProcessError:
+            # Continue even if pytest fails
+            print("Some tests failed, but we are still proceeding to collect the report...")
 
         # Copy the JSON report back to the host
         print(f"Copying the JSON report to {host_output_report}...")
         subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report])
 
         print(f"Test completed. Report saved at {host_output_report}")
-    
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
-    
     finally:
         # Stop and remove the container
         print(f"Stopping and removing container {container_name}...")
@@ -74,6 +70,7 @@ def run_docker_tests(image_name):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) != 2:
         print("Usage: python test_manager.py <docker_image_name>")
         sys.exit(1)
