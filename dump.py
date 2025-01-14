@@ -11,7 +11,7 @@ from pathlib import Path
 TEST_REPORT_PATH = '/tmp/test_tools/.report.json'
 TOOL_VERSION_PATH = '/tmp/test_tools/tool_version.json'
 OUTPUT_REPORT_PATH = '/tmp/test_tools/final_report.md'
-TEST_FILES_DIR = '/path/to/test_files'
+TEST_FILES_DIR = '/path/to/test_files'  # Modify this with the correct path
 TEST_CONTAINER_DIR = '/tmp/test_tools'
 
 SUCCESS_ICON = "✅"
@@ -38,24 +38,20 @@ def spin_up_container(image_name, container_name):
         print(f"Error spinning up container: {e}")
         return None
 
-def setup_pyenv(container):
-    """Set up pyenv inside the container."""
+def setup_virtualenv(container):
+    """Set up a virtual environment and install required Python packages inside the container."""
     try:
+        # Command to create and activate a virtual environment inside the container
         commands = [
-            "curl https://pyenv.run | bash",
-            "export PATH=\"$HOME/.pyenv/bin:$PATH\"",
-            "eval \"$(pyenv init --path)\"",
-            "eval \"$(pyenv virtualenv-init -)\"",
-            "pyenv install 3.11.10",
-            "pyenv virtualenv 3.11.10 test_env",
-            "pyenv activate test_env",
-            "pip install pytest pytest-json-report"
+            "python3 -m venv /tmp/test_tools/venv",
+            "source /tmp/test_tools/venv/bin/activate",
+            "pip install -r /tmp/test_tools/requirements.txt"
         ]
         setup_command = " && ".join(commands)
         result = container.exec_run(f"bash -c '{setup_command}'")
         print(result.output.decode())
     except Exception as e:
-        print(f"Error setting up pyenv: {e}")
+        print(f"Error setting up virtual environment: {e}")
 
 def copy_test_files(container):
     """Copy test files into the container."""
@@ -73,7 +69,8 @@ def copy_test_files(container):
 def run_tests(container):
     """Run pytest inside the container and generate a JSON report."""
     try:
-        command = f"bash -c 'source ~/.pyenv/versions/test_env/bin/activate && pytest {TEST_CONTAINER_DIR} --json-report --json-report-file={TEST_REPORT_PATH}'"
+        # Running the pytest command in the virtual environment inside the container
+        command = f"source /tmp/test_tools/venv/bin/activate && pytest {TEST_CONTAINER_DIR} --json-report --json-report-file={TEST_REPORT_PATH}"
         result = container.exec_run(command)
         print(result.output.decode())
         return TEST_REPORT_PATH
@@ -97,15 +94,24 @@ def get_tool_versions(container):
         json.dump(versions, file, indent=4)
     return versions
 
+def extract_tool_name(nodeid):
+    """Extract tool name from nodeid."""
+    parts = nodeid.split('/')
+    if len(parts) > 1:
+        tool_part = parts[1]  # e.g., test_tools/test_git.py
+        return tool_part.split('.')[0]  # e.g., git
+    return "Unknown"
+
 def generate_markdown(test_report, tool_versions):
     """Generate a Markdown report from test results and tool versions."""
     markdown = "# Test Summary Report\n\n"
 
     tools = {}
+
     for test in test_report.get('tests', []):
         nodeid = test.get('nodeid', '')
         outcome = test.get('outcome', 'unknown')
-        tool_name = nodeid.split('/')[1].split('_')[1] if '/' in nodeid else "Unknown"
+        tool_name = extract_tool_name(nodeid)
         test_name = nodeid.split('::')[-1]
 
         if tool_name not in tools:
@@ -143,8 +149,8 @@ def main():
         return
 
     try:
-        # Set up pyenv
-        setup_pyenv(container)
+        # Set up virtual environment and install dependencies
+        setup_virtualenv(container)
 
         # Copy test files
         copy_test_files(container)
