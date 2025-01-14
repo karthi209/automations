@@ -1,75 +1,69 @@
-import subprocess
-import time
+import json
 
-def run_docker_tests(image_name):
-    container_name = f"test-container-{int(time.time())}"
-    container_tmp_dir = "/tmp/test_tools"  # Working directory inside the container
-    host_test_scripts_dir = "./test_tools"  # Default location of test scripts on the host
-    host_output_report = "./test_report.json"  # Default location for the JSON report on the host
+def parse_test_report(report_file):
+    """
+    Parses the pytest default JSON report and generates a Markdown summary.
 
+    :param report_file: Path to the pytest JSON report.
+    :return: Markdown formatted report.
+    """
     try:
-        # Pull the Docker image
-        print(f"Pulling Docker image {image_name}...")
-        subprocess.check_call(["docker", "pull", image_name])
+        with open(report_file, "r") as file:
+            report_data = json.load(file)
 
-        # Start the container as root
-        print(f"Starting container {container_name}...")
-        subprocess.check_call([
-            "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
-        ])
+        summary = report_data.get("summary", {})
+        total_tests = summary.get("total", 0)
+        passed_tests = summary.get("passed", 0)
+        failed_tests = summary.get("failed", 0)
+        skipped_tests = summary.get("skipped", 0)
 
-        # Create and set permissions for the /tmp/test_tools directory
-        print("Preparing /tmp/test_tools directory inside the container...")
-        subprocess.check_call([
-            "docker", "exec", container_name, "mkdir", "-p", container_tmp_dir
-        ])
-        subprocess.check_call([
-            "docker", "exec", container_name, "chmod", "777", container_tmp_dir
-        ])
+        # Start creating the markdown report
+        markdown_report = f"## Test Results Summary\n\n"
+        markdown_report += f"Total Tests: {total_tests}\n"
+        markdown_report += f"Passed: {passed_tests} ✅\n"
+        markdown_report += f"Failed: {failed_tests} ❌\n"
+        markdown_report += f"Skipped: {skipped_tests} ⏸️\n\n"
 
-        # Copy test scripts into the /tmp folder inside the container
-        print(f"Copying test scripts from {host_test_scripts_dir} to the container at {container_tmp_dir}...")
-        subprocess.check_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
+        markdown_report += "### Detailed Test Results\n\n"
+        markdown_report += "| Test Name | Outcome | Duration | Message |\n"
+        markdown_report += "|-----------|---------|----------|---------|\n"
 
-        # Create a virtual environment inside the container in the /tmp directory
-        print("Creating virtual environment in the container...")
-        subprocess.check_call([
-            "docker", "exec", container_name, "python3", "-m", "venv", f"{container_tmp_dir}/venv"
-        ])
+        # Add each test result to the markdown table
+        for test in report_data.get("tests", []):
+            test_name = test.get("nodeid", "Unknown Test")
+            outcome = test.get("outcome", "unknown")
+            duration = test.get("duration", 0)
+            message = test.get("message", "")
+            outcome_symbol = "✅" if outcome == "passed" else "❌" if outcome == "failed" else "⏸️"
 
-        # Install pytest and dependencies in the virtual environment
-        print("Installing pytest in the virtual environment...")
-        subprocess.check_call([
-            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install",
-            "pytest", "pytest-json-report"
-        ])
+            # Add test details as a row in the table
+            markdown_report += f"| {test_name} | {outcome_symbol} | {duration:.2f} sec | {message} |\n"
 
-        # Run pytest in the virtual environment with JSON reporting
-        print("Running pytest in the container with JSON reporting...")
-        subprocess.check_call([
-            "docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
-            "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"
-        ])
+        return markdown_report
 
-        # Copy the JSON report back to the host
-        print(f"Copying the JSON report to {host_output_report}...")
-        subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report])
+    except FileNotFoundError:
+        return f"Error: The file {report_file} does not exist."
+    except json.JSONDecodeError:
+        return f"Error: The file {report_file} is not a valid JSON file."
 
-        print(f"Test completed. Report saved at {host_output_report}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error: {e}")
-    finally:
-        # Stop and remove the container
-        print(f"Stopping and removing container {container_name}...")
-        subprocess.check_call(["docker", "stop", container_name])
-        subprocess.check_call(["docker", "rm", container_name])
+
+def write_markdown(report_file, output_file):
+    """
+    Processes the pytest JSON report and writes it to a Markdown file.
+
+    :param report_file: Path to the pytest JSON report.
+    :param output_file: Path to the output Markdown file.
+    """
+    markdown_report = parse_test_report(report_file)
+    with open(output_file, "w") as file:
+        file.write(markdown_report)
+    print(f"Markdown report written to {output_file}")
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) != 2:
-        print("Usage: python test_manager.py <docker_image_name>")
-        sys.exit(1)
+    # Paths to the input JSON file and the output Markdown file
+    report_file = "test_report.json"  # pytest JSON report
+    output_file = "test_report.md"    # Output Markdown file
 
-    docker_image_name = sys.argv[1]
-    run_docker_tests(docker_image_name)
+    # Generate the Markdown report
+    write_markdown(report_file, output_file)
