@@ -20,16 +20,23 @@ def run_docker_tests(image_name, test_scripts_dir, output_report):
         print(f"Copying test scripts from {test_scripts_dir} to the container...")
         subprocess.check_call(["docker", "cp", test_scripts_dir, f"{container_name}:/test_tools"])
 
-        # Install pytest and dependencies inside the container
-        print("Installing pytest inside the container...")
+        # Create a virtual environment inside the container
+        print("Creating virtual environment in the container...")
         subprocess.check_call([
-            "docker", "exec", container_name, "pip3", "install", "pytest", "pytest-json-report"
+            "docker", "exec", container_name, "python3", "-m", "venv", "/test_tools/venv"
         ])
 
-        # Run pytest with JSON reporting in the container
+        # Install pytest and dependencies in the virtual environment
+        print("Installing pytest in the virtual environment...")
+        subprocess.check_call([
+            "docker", "exec", container_name, "/test_tools/venv/bin/pip", "install",
+            "pytest", "pytest-json-report"
+        ])
+
+        # Run pytest in the virtual environment with JSON reporting
         print("Running pytest in the container with JSON reporting...")
         subprocess.check_call([
-            "docker", "exec", container_name, "pytest", "/test_tools",
+            "docker", "exec", container_name, "/test_tools/venv/bin/pytest", "/test_tools",
             "--json-report", "--json-report-file", "/test_tools/test_report.json"
         ])
 
