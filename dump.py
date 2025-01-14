@@ -12,10 +12,19 @@ def run_docker_tests(image_name):
         print(f"Pulling Docker image {image_name}...")
         subprocess.check_call(["docker", "pull", image_name])
 
-        # Start the container
+        # Start the container as root
         print(f"Starting container {container_name}...")
         subprocess.check_call([
             "docker", "run", "-d", "--name", container_name, image_name, "tail", "-f", "/dev/null"
+        ])
+
+        # Create and set permissions for the /tmp/test_tools directory
+        print("Preparing /tmp/test_tools directory inside the container...")
+        subprocess.check_call([
+            "docker", "exec", container_name, "mkdir", "-p", container_tmp_dir
+        ])
+        subprocess.check_call([
+            "docker", "exec", container_name, "chmod", "777", container_tmp_dir
         ])
 
         # Copy test scripts into the /tmp folder inside the container
@@ -53,7 +62,7 @@ def run_docker_tests(image_name):
         # Stop and remove the container
         print(f"Stopping and removing container {container_name}...")
         subprocess.check_call(["docker", "stop", container_name])
-        subprocess.check_call(["docker", "rm", container_name])
+        subprocess.check_call(["docker", "rm", container_name"])
 
 
 if __name__ == "__main__":
