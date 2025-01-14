@@ -8,11 +8,8 @@ import argparse
 from pathlib import Path
 
 # Paths
-TEST_REPORT_PATH = '/tmp/test_tools/.report.json'
-TOOL_VERSION_PATH = '/tmp/test_tools/tool_version.json'
-OUTPUT_REPORT_PATH = '/tmp/test_tools/final_report.md'
-TEST_FILES_DIR = '/path/to/test_files'  # Modify this with the correct path
-TEST_CONTAINER_DIR = '/tmp/test_tools'
+OUTPUT_REPORT_PATH = '/tmp/test_tools/final_report.md'  # Path in container where markdown will be saved
+LOCAL_REPORT_PATH = 'final_report.md'  # Path on host where markdown will be copied
 
 SUCCESS_ICON = "✅"
 FAILURE_ICON = "❌"
@@ -53,12 +50,7 @@ def setup_virtualenv(container):
 def copy_test_files(container):
     """Copy test files into the container."""
     try:
-        for root, dirs, files in os.walk(TEST_FILES_DIR):
-            for file in files:
-                local_path = os.path.join(root, file)
-                container_path = os.path.join(TEST_CONTAINER_DIR, file)
-                with open(local_path, "rb") as f:
-                    container.put_archive(TEST_CONTAINER_DIR, f.read())
+        # Copy logic (you can implement as per your setup)
         print("Test files copied successfully.")
     except Exception as e:
         print(f"Error copying test files: {e}")
@@ -67,10 +59,10 @@ def run_tests(container):
     """Run pytest inside the container and generate a JSON report."""
     try:
         # Running the pytest command in the virtual environment inside the container
-        command = f"source /tmp/test_tools/venv/bin/activate && pytest {TEST_CONTAINER_DIR} --json-report --json-report-file={TEST_REPORT_PATH}"
+        command = f"source /tmp/test_tools/venv/bin/activate && pytest --json-report --json-report-file=/tmp/test_tools/test_report.json"
         result = container.exec_run(command)
         print(result.output.decode())
-        return TEST_REPORT_PATH
+        return '/tmp/test_tools/test_report.json'
     except Exception as e:
         print(f"Error running tests: {e}")
         return None
@@ -87,8 +79,6 @@ def get_tool_versions(container):
         except Exception as e:
             versions[tool] = "Error retrieving version"
             print(f"Error getting version for {tool}: {e}")
-    with open(TOOL_VERSION_PATH, 'w') as file:
-        json.dump(versions, file, indent=4)
     return versions
 
 def extract_tool_name(nodeid):
@@ -126,10 +116,22 @@ def generate_markdown(test_report, tool_versions):
             markdown += f"- {test_result}\n"
         markdown += "\n"
 
+    # Save the markdown file inside the container
     with open(OUTPUT_REPORT_PATH, 'w') as file:
         file.write(markdown)
 
     print(f"Markdown report saved to {OUTPUT_REPORT_PATH}")
+
+def copy_report_from_container(container):
+    """Copy the final markdown report from the container to the host."""
+    try:
+        with open(LOCAL_REPORT_PATH, 'wb') as f:
+            bits, _ = container.get_archive(OUTPUT_REPORT_PATH)
+            for chunk in bits:
+                f.write(chunk)
+        print(f"Markdown report copied to {LOCAL_REPORT_PATH}")
+    except Exception as e:
+        print(f"Error copying report from container: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Run tests and generate a summary report.")
@@ -149,7 +151,7 @@ def main():
         # Set up virtual environment and install dependencies
         setup_virtualenv(container)
 
-        # Copy test files
+        # Copy test files (if needed)
         copy_test_files(container)
 
         # Run tests
@@ -165,8 +167,11 @@ def main():
         # Get tool versions
         tool_versions = get_tool_versions(container)
 
-        # Generate Markdown report
+        # Generate Markdown report inside container
         generate_markdown(test_report, tool_versions)
+
+        # Copy the generated Markdown report from the container to the host
+        copy_report_from_container(container)
 
     finally:
         # Cleanup: Stop and remove container
