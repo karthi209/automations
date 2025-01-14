@@ -5,6 +5,7 @@ import docker
 from pathlib import Path
 from typing import Dict, Optional
 import logging
+import shutil
 
 # Configure logging
 logging.basicConfig(
@@ -52,22 +53,12 @@ class DockerTestRunner:
         command: str
     ) -> tuple[int, str]:
         """Execute a command in the container and return results."""
-        try:
-            exec_result = container.exec_run(command)
-            
-            # exec_result is an object with attributes exit_code and output
-            exit_code = exec_result.exit_code
-            output = exec_result.output.decode('utf-8')  # Decode from bytes to string
-            
-            if exit_code != 0:
-                logger.warning(f"Command '{command}' failed with exit code {exit_code}")
-                logger.warning(f"Output: {output}")
-            
-            return exit_code, output
-
-        except Exception as e:
-            logger.error(f"Failed to execute command '{command}': {e}")
-            return 1, str(e)  # Return error code and message
+        result = container.exec_run(command)
+        output = result.output.decode('utf-8')
+        if result.exit_code != 0:
+            logger.warning(f"Command '{command}' failed with exit code {result.exit_code}")
+            logger.warning(f"Output: {output}")
+        return result.exit_code, output
 
     def setup_virtual_environment(self, container: docker.models.containers.Container) -> bool:
         """Set up Python virtual environment in the container."""
@@ -174,15 +165,17 @@ class DockerTestRunner:
                 self.docker_image_name,
                 name=self.container_name,
                 detach=True,
-                volumes={
-                    str(self.test_files_dir): {
-                        'bind': str(self.container_dir),
-                        'mode': 'rw'
-                    }
-                },
-                environment=["PYTHONPATH=/tmp/test_tools"],
+                working_dir='/tmp',
             )
             logger.info(f"Container {self.container_name} started successfully")
+
+            # Copy the test files from the host to the container
+            container_path = "/tmp/test_tools"
+            for file_or_dir in self.test_files_dir.iterdir():
+                if file_or_dir.is_dir():
+                    shutil.copytree(file_or_dir, container_path / file_or_dir.name)
+                else:
+                    shutil.copy(file_or_dir, container_path / file_or_dir.name)
 
             if not self.setup_virtual_environment(container):
                 raise RuntimeError("Failed to set up virtual environment")
@@ -191,6 +184,7 @@ class DockerTestRunner:
             if not test_report_path:
                 raise RuntimeError("Failed to generate test report")
 
+            # Copy the test report and tool version files back to the host
             with open(self.paths['test_report'], 'wb') as f:
                 f.write(container.exec_run(f"cat {test_report_path}").output)
 
@@ -202,6 +196,9 @@ class DockerTestRunner:
 
             if test_report and tool_versions:
                 self.generate_markdown(test_report, tool_versions)
+
+            # Copy the final report back to the host
+            shutil.copy(self.paths['output_report'], './final_report.md')
 
         except Exception as e:
             logger.error(f"Test execution failed: {e}")
