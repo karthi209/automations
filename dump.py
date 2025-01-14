@@ -1,10 +1,11 @@
 import subprocess
 import time
-import os
 
-def run_docker_tests(image_name, test_scripts_dir, output_report):
+def run_docker_tests(image_name):
     container_name = f"test-container-{int(time.time())}"
     container_tmp_dir = "/tmp/test_tools"  # Working directory inside the container
+    host_test_scripts_dir = "./test_tools"  # Default location of test scripts on the host
+    host_output_report = "./test_report.json"  # Default location for the JSON report on the host
 
     try:
         # Pull the Docker image
@@ -18,8 +19,8 @@ def run_docker_tests(image_name, test_scripts_dir, output_report):
         ])
 
         # Copy test scripts into the /tmp folder inside the container
-        print(f"Copying test scripts from {test_scripts_dir} to the container at {container_tmp_dir}...")
-        subprocess.check_call(["docker", "cp", test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
+        print(f"Copying test scripts from {host_test_scripts_dir} to the container at {container_tmp_dir}...")
+        subprocess.check_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"])
 
         # Create a virtual environment inside the container in the /tmp directory
         print("Creating virtual environment in the container...")
@@ -42,9 +43,10 @@ def run_docker_tests(image_name, test_scripts_dir, output_report):
         ])
 
         # Copy the JSON report back to the host
-        print(f"Copying the JSON report to {output_report}...")
-        subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", output_report])
+        print(f"Copying the JSON report to {host_output_report}...")
+        subprocess.check_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report])
 
+        print(f"Test completed. Report saved at {host_output_report}")
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
     finally:
@@ -56,12 +58,9 @@ def run_docker_tests(image_name, test_scripts_dir, output_report):
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) != 4:
-        print("Usage: python test_manager.py <docker_image_name> <test_scripts_dir> <output_report>")
+    if len(sys.argv) != 2:
+        print("Usage: python test_manager.py <docker_image_name>")
         sys.exit(1)
 
     docker_image_name = sys.argv[1]
-    test_scripts_directory = sys.argv[2]
-    output_report_file = sys.argv[3]
-
-    run_docker_tests(docker_image_name, test_scripts_directory, output_report_file)
+    run_docker_tests(docker_image_name)
