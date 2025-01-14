@@ -2,6 +2,9 @@ import json
 import subprocess
 import os
 import docker
+import random
+import string
+import argparse
 from pathlib import Path
 
 # File paths
@@ -10,6 +13,10 @@ OUTPUT_REPORT_PATH = 'final_report.md'
 TEST_DIR = Path("/tmp/test_tools")
 SUCCESS_ICON = "✅"
 FAILURE_ICON = "❌"
+
+def random_container_name():
+    """Generate a random Docker container name."""
+    return "test_container_" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
 def spin_up_container(image_name, container_name, test_files):
     """Spin up a Docker container, copy test files, and run setup commands."""
@@ -98,8 +105,12 @@ def generate_markdown(test_report, tool_versions):
     print(f"Markdown report saved to {OUTPUT_REPORT_PATH}")
 
 def main():
-    image_name = "your_image_name_here"
-    container_name = "test_container"
+    parser = argparse.ArgumentParser(description="Run tests and generate a summary report.")
+    parser.add_argument("--image", required=True, help="Docker image name to use for testing.")
+    args = parser.parse_args()
+
+    image_name = args.image
+    container_name = random_container_name()
     test_files = ["path_to_test_file_1", "path_to_test_file_2"]
     tools = ["git", "python", "node", "docker"]
 
