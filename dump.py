@@ -18,7 +18,6 @@ def load_json_file(file_path):
 def get_tool_name_from_nodeid(nodeid):
     """Extract tool name from the test nodeid."""
     try:
-        # Ensure nodeid contains the expected format
         if nodeid:
             # Assuming the tool name is the part of the filename before the first period (e.g., 'git' from 'test_git.py')
             tool_name = nodeid.split('/')[1].split('.')[0]
@@ -39,10 +38,17 @@ def generate_markdown_report(test_report, tool_version_report):
             tool_name = get_tool_name_from_nodeid(collector['nodeid'])
             
             if tool_name:  # Only proceed if a valid tool name was found
+                print(f"Extracted tool name: {tool_name}")  # Log the extracted tool name
+                
+                # Get version from the tool_version_report
+                if tool_name in tool_version_report:
+                    tool_version = tool_version_report[tool_name]
+                else:
+                    tool_version = 'Version not found'
+                    print(f"Tool version not found for: {tool_name}")  # Log if version is not found
+                
                 # Initialize tool status if not already
                 if tool_name not in tools_status:
-                    # Get version from the tool_version_report
-                    tool_version = tool_version_report.get(tool_name, 'Version not found')
                     tools_status[tool_name] = {
                         'version': tool_version,
                         'tests': []
