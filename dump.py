@@ -2,7 +2,7 @@ import json
 import os
 
 # Paths to the input JSON files
-TEST_REPORT_FILE = 'test_report.json'
+TEST_REPORT_DIR = 'tools_test'  # Directory containing individual test result JSON files
 TOOL_VERSIONS_FILE = 'tool_versions.json'
 
 # Path to the output Markdown file
@@ -24,6 +24,13 @@ def load_json(file_path):
         print(f"Error: Failed to parse {file_path}, invalid JSON.")
         return None
 
+def load_tool_versions():
+    """Load tool versions from the JSON config."""
+    tool_versions = load_json(TOOL_VERSIONS_FILE)
+    if not tool_versions:
+        return {}
+    return tool_versions
+
 def generate_tool_versions_section(tool_versions):
     """Generate a Markdown section for tool versions."""
     if not tool_versions:
@@ -35,37 +42,21 @@ def generate_tool_versions_section(tool_versions):
     section += "\n"
     return section
 
-def categorize_tests_by_tool(test_report):
-    """Categorize the tests by the tool name."""
-    categorized_tests = {}
+def extract_tool_name_from_filename(filename):
+    """Extract the tool name from the filename (e.g., 'test_git' -> 'git')."""
+    return filename.split('_')[1] if '_' in filename else filename
 
-    # Extract relevant information from the JSON test report
-    for test in test_report.get("tests", []):
-        tool = test.get('tool', 'Unknown')
-        outcome = test.get('outcome', 'unknown')
-        test_name = test.get('test', 'Unnamed Test')
-        message = test.get('message', 'No message')
-
-        if tool not in categorized_tests:
-            categorized_tests[tool] = []
-
-        categorized_tests[tool].append({
-            "name": test_name,
-            "outcome": outcome,
-            "message": message
-        })
-    
-    return categorized_tests
-
-def generate_test_results_section(categorized_tests):
+def generate_test_results_section(test_reports, tool_versions):
     """Generate a Markdown section for categorized test results."""
-    if not categorized_tests:
+    if not test_reports:
         return "### Test Results\nNo test results available.\n"
     
     section = "### Test Results by Tool\n\n"
     
-    for tool, tests in categorized_tests.items():
-        section += f"#### {tool}\n"
+    for tool, tests in test_reports.items():
+        version = tool_versions.get(tool, "Version not found")
+        section += f"#### {tool} (Version: {version})\n"
+        
         for test in tests:
             outcome = test["outcome"]
             icon = SUCCESS_ICON if outcome == "passed" else FAILURE_ICON
@@ -74,16 +65,42 @@ def generate_test_results_section(categorized_tests):
     
     return section
 
-def generate_markdown_report(test_report, tool_versions):
+def categorize_tests_by_tool():
+    """Categorize test results by tool based on the filenames."""
+    test_reports = {}
+    
+    for filename in os.listdir(TEST_REPORT_DIR):
+        if filename.endswith('.json'):
+            tool_name = extract_tool_name_from_filename(filename)
+            file_path = os.path.join(TEST_REPORT_DIR, filename)
+            
+            # Load the test report for this tool
+            test_report = load_json(file_path)
+            if not test_report:
+                continue
+            
+            if tool_name not in test_reports:
+                test_reports[tool_name] = []
+            
+            # Add the test results to the categorized list
+            for test in test_report.get("tests", []):
+                test_reports[tool_name].append({
+                    "name": test.get('test', 'Unnamed Test'),
+                    "outcome": test.get('outcome', 'unknown'),
+                    "message": test.get('message', 'No message')
+                })
+    
+    return test_reports
+
+def generate_markdown_report(test_reports, tool_versions):
     """Generate the full Markdown report combining test results and tool versions."""
     report = "# Test Summary Report\n\n"
     
     # Generate the sections
     report += generate_tool_versions_section(tool_versions)
     
-    # Categorize tests by tool and generate the test results section
-    categorized_tests = categorize_tests_by_tool(test_report)
-    report += generate_test_results_section(categorized_tests)
+    # Generate the test results section
+    report += generate_test_results_section(test_reports, tool_versions)
     
     return report
 
@@ -94,16 +111,20 @@ def save_report(report, output_file):
     print(f"Markdown report saved to {output_file}")
 
 def main():
-    # Load the test report and tool versions data
-    test_report = load_json(TEST_REPORT_FILE)
-    tool_versions = load_json(TOOL_VERSIONS_FILE)
+    # Load the tool versions data
+    tool_versions = load_tool_versions()
+    if not tool_versions:
+        print("Error: Tool versions data is missing or invalid.")
+        return
     
-    if test_report is None or tool_versions is None:
-        print("Error: Unable to generate the report due to missing or invalid data.")
+    # Categorize the tests by tool based on filenames
+    test_reports = categorize_tests_by_tool()
+    if not test_reports:
+        print("Error: Test reports are missing or invalid.")
         return
     
     # Generate the Markdown report
-    report = generate_markdown_report(test_report, tool_versions)
+    report = generate_markdown_report(test_reports, tool_versions)
     
     # Save the report to a file
     save_report(report, OUTPUT_MD_FILE)
