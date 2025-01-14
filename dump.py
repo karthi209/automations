@@ -2,28 +2,49 @@ import subprocess
 import pytest
 import os
 
-def get_docker_version():
-    result = subprocess.run(["docker", "--version"], capture_output=True, text=True)
+def get_curl_version():
+    result = subprocess.run(["curl", "-V"], capture_output=True, text=True)
     return result.stdout.strip()
 
-def test_docker_version():
-    assert "Docker" in get_docker_version()
+def test_curl_version():
+    assert "curl" in get_curl_version()
 
-def test_docker_installation_path():
-    result = subprocess.run(["which", "docker"], capture_output=True, text=True)
-    assert "/usr/bin/docker" in result.stdout.strip()
+def test_curl_installation_path():
+    result = subprocess.run(["which", "curl"], capture_output=True, text=True)
+    assert "/usr/bin/curl" in result.stdout.strip()
 
-def test_docker_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/docker"], capture_output=True, text=True)
-    assert "/usr/bin/docker" in result.stdout.strip()
+def test_curl_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/curl"], capture_output=True, text=True)
+    assert "/usr/bin/curl" in result.stdout.strip()
 
-def test_docker_executable():
-    result = subprocess.run(["docker", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
+def test_curl_executable():
+    result = subprocess.run(["curl", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If curl executes successfully, return code should be 0
 
-def test_docker_home_env_var():
-    result = subprocess.run(["echo", "$DOCKER_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure DOCKER_HOME is set
+
+
+import subprocess
+import pytest
+import os
+
+def get_yq_version():
+    result = subprocess.run(["yq", "-V"], capture_output=True, text=True)
+    return result.stdout.strip()
+
+def test_yq_version():
+    assert "yq" in get_yq_version()
+
+def test_yq_installation_path():
+    result = subprocess.run(["which", "yq"], capture_output=True, text=True)
+    assert "/usr/bin/yq" in result.stdout.strip()
+
+def test_yq_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/yq"], capture_output=True, text=True)
+    assert "/usr/bin/yq" in result.stdout.strip()
+
+def test_yq_executable():
+    result = subprocess.run(["yq", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If yq executes successfully, return code should be 0
 
 
 
@@ -32,29 +53,49 @@ import subprocess
 import pytest
 import os
 
-def get_kubectl_version():
-    result = subprocess.run(["kubectl", "version", "--client"], capture_output=True, text=True)
+def get_oc_version():
+    result = subprocess.run(["oc", "version"], capture_output=True, text=True)
     return result.stdout.strip()
 
-def test_kubectl_version():
-    assert "Client Version" in get_kubectl_version()
+def test_oc_version():
+    assert "openshift" in get_oc_version()
 
-def test_kubectl_installation_path():
-    result = subprocess.run(["which", "kubectl"], capture_output=True, text=True)
-    assert "/usr/bin/kubectl" in result.stdout.strip()
+def test_oc_installation_path():
+    result = subprocess.run(["which", "oc"], capture_output=True, text=True)
+    assert "/usr/bin/oc" in result.stdout.strip()
 
-def test_kubectl_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/kubectl"], capture_output=True, text=True)
-    assert "/usr/bin/kubectl" in result.stdout.strip()
+def test_oc_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/oc"], capture_output=True, text=True)
+    assert "/usr/bin/oc" in result.stdout.strip()
 
-def test_kubectl_executable():
-    result = subprocess.run(["kubectl", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
+def test_oc_executable():
+    result = subprocess.run(["oc", "help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If oc executes successfully, return code should be 0
 
-def test_kubectl_home_env_var():
-    result = subprocess.run(["echo", "$KUBECTL_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure KUBECTL_HOME is set
 
+
+import subprocess
+import pytest
+import os
+
+def get_rsync_version():
+    result = subprocess.run(["rsync", "--version"], capture_output=True, text=True)
+    return result.stdout.strip()
+
+def test_rsync_version():
+    assert "rsync" in get_rsync_version()
+
+def test_rsync_installation_path():
+    result = subprocess.run(["which", "rsync"], capture_output=True, text=True)
+    assert "/usr/bin/rsync" in result.stdout.strip()
+
+def test_rsync_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/rsync"], capture_output=True, text=True)
+    assert "/usr/bin/rsync" in result.stdout.strip()
+
+def test_rsync_executable():
+    result = subprocess.run(["rsync", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If rsync executes successfully, return code should be 0
 
 
 
@@ -63,28 +104,24 @@ import subprocess
 import pytest
 import os
 
-def get_terraform_version():
-    result = subprocess.run(["terraform", "--version"], capture_output=True, text=True)
+def get_checkmarx_version():
+    result = subprocess.run(["cx", "version"], capture_output=True, text=True)
     return result.stdout.strip()
 
-def test_terraform_version():
-    assert "Terraform" in get_terraform_version()
+def test_checkmarx_version():
+    assert "Checkmarx" in get_checkmarx_version()
 
-def test_terraform_installation_path():
-    result = subprocess.run(["which", "terraform"], capture_output=True, text=True)
-    assert "/usr/bin/terraform" in result.stdout.strip()
+def test_checkmarx_installation_path():
+    result = subprocess.run(["which", "cx"], capture_output=True, text=True)
+    assert "/usr/bin/cx" in result.stdout.strip()
 
-def test_terraform_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/terraform"], capture_output=True, text=True)
-    assert "/usr/bin/terraform" in result.stdout.strip()
+def test_checkmarx_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/cx"], capture_output=True, text=True)
+    assert "/usr/bin/cx" in result.stdout.strip()
 
-def test_terraform_executable():
-    result = subprocess.run(["terraform", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
-
-def test_terraform_home_env_var():
-    result = subprocess.run(["echo", "$TERRAFORM_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure TERRAFORM_HOME is set
+def test_checkmarx_executable():
+    result = subprocess.run(["cx", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If cx executes successfully, return code should be 0
 
 
 
@@ -93,57 +130,24 @@ import subprocess
 import pytest
 import os
 
-def get_node_version():
-    result = subprocess.run(["node", "--version"], capture_output=True, text=True)
+def get_jfrog_version():
+    result = subprocess.run(["jf", "-v"], capture_output=True, text=True)
     return result.stdout.strip()
 
-def test_node_version():
-    assert "v" in get_node_version()  # Node.js version should start with 'v'
+def test_jfrog_version():
+    assert "jfrog" in get_jfrog_version()
 
-def test_node_installation_path():
-    result = subprocess.run(["which", "node"], capture_output=True, text=True)
-    assert "/usr/bin/node" in result.stdout.strip()
+def test_jfrog_installation_path():
+    result = subprocess.run(["which", "jf"], capture_output=True, text=True)
+    assert "/usr/bin/jf" in result.stdout.strip()
 
-def test_node_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/node"], capture_output=True, text=True)
-    assert "/usr/bin/node" in result.stdout.strip()
+def test_jfrog_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/jf"], capture_output=True, text=True)
+    assert "/usr/bin/jf" in result.stdout.strip()
 
-def test_node_executable():
-    result = subprocess.run(["node", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
-
-def test_node_home_env_var():
-    result = subprocess.run(["echo", "$NODE_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure NODE_HOME is set
-
-
-
-import subprocess
-import pytest
-import os
-
-def get_python_version():
-    result = subprocess.run(["python", "--version"], capture_output=True, text=True)
-    return result.stdout.strip()
-
-def test_python_version():
-    assert "Python" in get_python_version()
-
-def test_python_installation_path():
-    result = subprocess.run(["which", "python"], capture_output=True, text=True)
-    assert "/usr/bin/python" in result.stdout.strip()
-
-def test_python_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/python"], capture_output=True, text=True)
-    assert "/usr/bin/python" in result.stdout.strip()
-
-def test_python_executable():
-    result = subprocess.run(["python", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
-
-def test_python_home_env_var():
-    result = subprocess.run(["echo", "$PYTHON_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure PYTHON_HOME is set
+def test_jfrog_executable():
+    result = subprocess.run(["jf", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If jf executes successfully, return code should be 0
 
 
 
@@ -152,57 +156,24 @@ import subprocess
 import pytest
 import os
 
-def get_mysql_version():
-    result = subprocess.run(["mysql", "--version"], capture_output=True, text=True)
+def get_databricks_version():
+    result = subprocess.run(["databricks", "--version"], capture_output=True, text=True)
     return result.stdout.strip()
 
-def test_mysql_version():
-    assert "mysql" in get_mysql_version()
+def test_databricks_version():
+    assert "databricks" in get_databricks_version()
 
-def test_mysql_installation_path():
-    result = subprocess.run(["which", "mysql"], capture_output=True, text=True)
-    assert "/usr/bin/mysql" in result.stdout.strip()
+def test_databricks_installation_path():
+    result = subprocess.run(["which", "databricks"], capture_output=True, text=True)
+    assert "/usr/bin/databricks" in result.stdout.strip()
 
-def test_mysql_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/mysql"], capture_output=True, text=True)
-    assert "/usr/bin/mysql" in result.stdout.strip()
+def test_databricks_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/databricks"], capture_output=True, text=True)
+    assert "/usr/bin/databricks" in result.stdout.strip()
 
-def test_mysql_executable():
-    result = subprocess.run(["mysql", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
-
-def test_mysql_home_env_var():
-    result = subprocess.run(["echo", "$MYSQL_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure MYSQL_HOME is set
-
-
-
-import subprocess
-import pytest
-import os
-
-def get_ruby_version():
-    result = subprocess.run(["ruby", "--version"], capture_output=True, text=True)
-    return result.stdout.strip()
-
-def test_ruby_version():
-    assert "ruby" in get_ruby_version()
-
-def test_ruby_installation_path():
-    result = subprocess.run(["which", "ruby"], capture_output=True, text=True)
-    assert "/usr/bin/ruby" in result.stdout.strip()
-
-def test_ruby_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/ruby"], capture_output=True, text=True)
-    assert "/usr/bin/ruby" in result.stdout.strip()
-
-def test_ruby_executable():
-    result = subprocess.run(["ruby", "--help"], capture_output=True, text=True)
-    assert result.returncode == 0
-
-def test_ruby_home_env_var():
-    result = subprocess.run(["echo", "$RUBY_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure RUBY_HOME is set
+def test_databricks_executable():
+    result = subprocess.run(["databricks", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If databricks executes successfully, return code should be 0
 
 
 
@@ -211,25 +182,21 @@ import subprocess
 import pytest
 import os
 
-def get_go_version():
-    result = subprocess.run(["go", "version"], capture_output=True, text=True)
+def get_twist_version():
+    result = subprocess.run(["twist-cli", "--version"], capture_output=True, text=True)
     return result.stdout.strip()
 
-def test_go_version():
-    assert "go" in get_go_version()
+def test_twist_version():
+    assert "twist-cli" in get_twist_version()
 
-def test_go_installation_path():
-    result = subprocess.run(["which", "go"], capture_output=True, text=True)
-    assert "/usr/bin/go" in result.stdout.strip()
+def test_twist_installation_path():
+    result = subprocess.run(["which", "twist-cli"], capture_output=True, text=True)
+    assert "/usr/bin/twist-cli" in result.stdout.strip()
 
-def test_go_symlink():
-    result = subprocess.run(["ls", "-l", "/usr/bin/go"], capture_output=True, text=True)
-    assert "/usr/bin/go" in result.stdout.strip()
+def test_twist_symlink():
+    result = subprocess.run(["ls", "-l", "/usr/bin/twist-cli"], capture_output=True, text=True)
+    assert "/usr/bin/twist-cli" in result.stdout.strip()
 
-def test_go_executable():
-    result = subprocess.run(["go", "help"], capture_output=True, text=True)
-    assert result.returncode == 0
-
-def test_go_home_env_var():
-    result = subprocess.run(["echo", "$GO_HOME"], capture_output=True, text=True, shell=True)
-    assert result.stdout.strip() != ""  # Ensure GO_HOME is set
+def test_twist_executable():
+    result = subprocess.run(["twist-cli", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0  # If twist-cli executes successfully, return code should be 0
