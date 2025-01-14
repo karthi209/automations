@@ -24,10 +24,10 @@ def parse_test_report(report_file):
             # Extract the tool name from the test name (assuming tool names are part of the test nodeid)
             tool_name = test_name.split("::")[0]  # Use the first part of the test name as tool name
 
-            # Extract the tool version if it's part of the test message
+            # Extract the version from the test message
             version = None
-            if "version" in message:
-                version = message.split(":")[-1].strip()
+            if "version:" in message:
+                version = message.split("version:")[-1].strip()
 
             # Prepare outcome symbols for pass/fail
             outcome_symbol = "✅" if outcome == "passed" else "❌" if outcome == "failed" else "⏸️"
