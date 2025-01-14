@@ -42,12 +42,9 @@ def setup_virtualenv(container):
     """Set up a virtual environment and install required Python packages inside the container."""
     try:
         # Command to create and activate a virtual environment inside the container
-        commands = [
-            "python3 -m venv /tmp/test_tools/venv",
-            "source /tmp/test_tools/venv/bin/activate",
-            "pip install -r /tmp/test_tools/requirements.txt"
-        ]
-        setup_command = " && ".join(commands)
+        setup_command = "python3 -m venv /tmp/test_tools/venv && " \
+                        "source /tmp/test_tools/venv/bin/activate && " \
+                        "pip install pytest"
         result = container.exec_run(f"bash -c '{setup_command}'")
         print(result.output.decode())
     except Exception as e:
