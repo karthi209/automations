@@ -11,20 +11,16 @@ jobs:
   create-dashboard:
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: ${{ github.event.workflow.id }}
-          workflow_conclusion: completed
-          path: artifacts
-          
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
       - name: Process Results and Create Dashboard
         run: |
           # Initialize dashboard with header
           echo "# Jenkins Integration Tests Dashboard" > dashboard.md
           
           # Get unique team names and sort them
-          teams=$(find artifacts -type f -name "result_*.md" -exec grep "Team:" {} \; | cut -d' ' -f2- | sort -u)
+          teams=$(find results -type f -name "result_*.md" -exec grep "Team:" {} \; | cut -d' ' -f2- | sort -u)
           
           # Process results for each team
           for team in $teams; do
@@ -33,7 +29,7 @@ jobs:
             echo "|-----------|--------------|-----------|---------|" >> dashboard.md
             
             # Find all result files for this team
-            find artifacts -type f -name "result_*.md" | while read -r file; do
+            find results -type f -name "result_*.md" | while read -r file; do
               # Check if file belongs to current team
               if grep -q "Team: $team" "$file"; then
                 # Extract required fields
@@ -52,9 +48,9 @@ jobs:
           echo -e "\n## Summary Statistics" >> dashboard.md
           echo "\`\`\`" >> dashboard.md
           echo "Total Teams: $(echo "$teams" | wc -l)" >> dashboard.md
-          echo "Total Jobs: $(find artifacts -type f -name "result_*.md" | wc -l)" >> dashboard.md
-          echo "Successful Jobs: $(grep -r ":white_check_mark: SUCCESS" artifacts | wc -l)" >> dashboard.md
-          echo "Failed Jobs: $(grep -r ":x: FAILURE" artifacts | wc -l)" >> dashboard.md
+          echo "Total Jobs: $(find results -type f -name "result_*.md" | wc -l)" >> dashboard.md
+          echo "Successful Jobs: $(grep -r ":white_check_mark: SUCCESS" results | wc -l)" >> dashboard.md
+          echo "Failed Jobs: $(grep -r ":x: FAILURE" results | wc -l)" >> dashboard.md
           echo "\`\`\`" >> dashboard.md
           
           # Add timestamp
