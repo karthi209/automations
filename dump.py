@@ -1,66 +1,88 @@
-name: Process Jenkins Test Results
+import requests
+import os
+import json
+from requests.exceptions import RequestException, ConnectionError, Timeout
 
-on:
-  workflow_dispatch:
-  workflow_run:
-    workflows: ["Your Trigger Workflow Name"]
-    types:
-      - completed
+def send_request():
 
-jobs:
-  create-dashboard:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    url = "xxx"
+    
+    # Get token from environment variable
+    token = os.getenv('JIRA_API_TOKEN')
+    tag = os.getenv('TAG')
 
-      - name: Process Results and Create Dashboard
-        run: |
-          # Initialize dashboard with header
-          echo "# Jenkins Integration Tests Dashboard" > dashboard.md
-          
-          # Get unique team names and sort them
-          teams=$(find results -type f -name "result_*.md" -exec grep "Team:" {} \; | cut -d' ' -f2- | sort -u)
-          
-          # Process results for each team
-          for team in $teams; do
-            echo -e "\n## $team" >> dashboard.md
-            echo "| Job Name | Build Number | Build URL | Status |" >> dashboard.md
-            echo "|-----------|--------------|-----------|---------|" >> dashboard.md
+    if not token:
+        raise ValueError("API token not found in environment variables")
+        
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "fields": {
+            "project": {
+                "key": os.getenv('JIRA_PROJECT_KEY')
+            },
+            "summary": f"GHA and Jenkins image versioned v{tag} ready for testing",
+            "issuetype":{
+                "name": "Task"
+            },
+            "description": f"""New image is now in staging and ready to be tested.
+            Please use the label "staging" to test images.
             
-            # Find all result files for this team
-            find results -type f -name "result_*.md" | while read -r file; do
-              # Check if file belongs to current team
-              if grep -q "Team: $team" "$file"; then
-                # Extract required fields
-                job_name=$(grep "Job Name:" "$file" | cut -d' ' -f3-)
-                build_num=$(grep "Build Number:" "$file" | cut -d' ' -f3-)
-                build_url=$(grep "Build URL:" "$file" | sed -n 's/.*\[\(.*\)\](\(.*\))/\2/p')
-                status=$(grep "Status:" "$file" | cut -d' ' -f3-)
-                
-                # Create table row
-                echo "| $job_name | $build_num | [Link]($build_url) | $status |" >> dashboard.md
-              fi
-            done
-          done
-          
-          # Add summary statistics
-          echo -e "\n## Summary Statistics" >> dashboard.md
-          echo "\`\`\`" >> dashboard.md
-          echo "Total Teams: $(echo "$teams" | wc -l)" >> dashboard.md
-          echo "Total Jobs: $(find results -type f -name "result_*.md" | wc -l)" >> dashboard.md
-          echo "Successful Jobs: $(grep -r ":white_check_mark: SUCCESS" results | wc -l)" >> dashboard.md
-          echo "Failed Jobs: $(grep -r ":x: FAILURE" results | wc -l)" >> dashboard.md
-          echo "\`\`\`" >> dashboard.md
-          
-          # Add timestamp
-          echo -e "\n_Last updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')_" >> dashboard.md
-          
-          # Output to GitHub step summary
-          cat dashboard.md >> $GITHUB_STEP_SUMMARY
-          
-      - name: Upload dashboard
-        uses: actions/upload-artifact@v3
-        with:
-          name: jenkins-dashboard
-          path: dashboard.md
+            Refer below links for testing results and pre-release notes.
+            
+            Pre-release notes for image version v{tag}
+            https://github.xxx.com/devsecops/agent_build/releases/tag/{tag}.jenkins.bluemix.all.tools
+            
+            Unit testing results
+            https://github.xxx.com/devsecops/agent_build/wiki/unit_test_results_v{tag}
+            
+            Integration testing results (User provided jobs) 
+            https://github.xxx.com/devsecops/agent_build/wiki/integration_test_results_v{tag}
+            
+            Molecule testing results
+            https://github.xxx.com/devsecops/agent_build/wiki/molecule_test_results_v{tag}
+            
+            Please comment in this ticket for feedback."""
+
+        }
+    }
+    
+    # Validate payload before sending
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload format")
+    
+    try:
+        with requests.Session() as session:
+            response = session.post(
+                url,
+                headers=headers,
+                json=payload
+            )
+            
+            response.raise_for_status()  # Raises an error for bad status codes
+            
+            # Log success
+            print(f"Status Code: {response.status_code}")
+            
+            # Parse and validate response
+            data = response.json()
+            return data
+            
+    except ConnectionError as e:
+        print(f"Connection failed: {e}")
+    except Timeout as e:
+        print(f"Request timed out: {e}")
+    except RequestException as e:
+        print(f"Request failed: {e}")
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse response: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    
+    return None
+
+send_request()
