@@ -4,13 +4,17 @@ import json
 from requests.exceptions import RequestException, ConnectionError, Timeout
 
 def send_request():
-
     url = "xxx"
     
-    # Get token from environment variable
     token = os.getenv('JIRA_API_TOKEN')
     tag = os.getenv('TAG')
+    project_key = os.getenv('JIRA_PROJECT_KEY')
 
+    # Debug environment variables (without exposing token)
+    print(f"Tag value: {tag}")
+    print(f"Project key: {project_key}")
+    print(f"Token present: {'Yes' if token else 'No'}")
+    
     if not token:
         raise ValueError("API token not found in environment variables")
         
@@ -19,14 +23,14 @@ def send_request():
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
-
+    
     payload = {
         "fields": {
             "project": {
-                "key": os.getenv('JIRA_PROJECT_KEY')
+                "key": project_key
             },
             "summary": f"GHA and Jenkins image versioned v{tag} ready for testing",
-            "issuetype":{
+            "issuetype": {
                 "name": "Task"
             },
             "description": f"""New image is now in staging and ready to be tested.
@@ -47,15 +51,15 @@ def send_request():
             https://github.xxx.com/devsecops/agent_build/wiki/molecule_test_results_v{tag}
             
             Please comment in this ticket for feedback."""
-
         }
     }
     
-    # Validate payload before sending
-    if not isinstance(payload, dict):
-        raise ValueError("Invalid payload format")
-    
     try:
+        print("\nSending request with:")
+        print(f"URL: {url}")
+        print("Headers:", {k: v if k != 'Authorization' else '[REDACTED]' for k, v in headers.items()})
+        print("Payload:", json.dumps(payload, indent=2))
+        
         with requests.Session() as session:
             response = session.post(
                 url,
@@ -63,12 +67,19 @@ def send_request():
                 json=payload
             )
             
-            response.raise_for_status()  # Raises an error for bad status codes
+            print(f"\nResponse Status Code: {response.status_code}")
+            print("Response Headers:", dict(response.headers))
+            print("Response Body:", response.text)
             
-            # Log success
-            print(f"Status Code: {response.status_code}")
+            if response.status_code == 400:
+                try:
+                    error_details = response.json()
+                    print("\nDetailed error information:", json.dumps(error_details, indent=2))
+                except:
+                    print("Could not parse error response as JSON")
             
-            # Parse and validate response
+            response.raise_for_status()
+            
             data = response.json()
             return data
             
@@ -78,6 +89,8 @@ def send_request():
         print(f"Request timed out: {e}")
     except RequestException as e:
         print(f"Request failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Error response: {e.response.text}")
     except json.JSONDecodeError as e:
         print(f"Failed to parse response: {e}")
     except Exception as e:
@@ -85,4 +98,5 @@ def send_request():
     
     return None
 
-send_request()
+if __name__ == "__main__":
+    result = send_request()
