@@ -1,95 +1,70 @@
-import requests
-import time
-import sys
-from requests.exceptions import RequestException
+name: Process Jenkins Test Results
 
-def trigger_jenkins_job(job_url, username, api_token, wait_time_seconds=7200, retry_interval=10):
-    
-    """
-    Triggers a Jenkins job and waits for its completion, then fetches the result.
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Your Trigger Workflow Name"]
+    types:
+      - completed
 
-    Args:
-    - job_url: The full job url, including folders (e.g., 'http://jenkins-server/Folder1/Folder2/example-job')
-    - username: Jenkins username
-    - api_token: Jenkins API token
-    - wait_time_seconds: Time to wait for the job to complete (default: 7200 seconds = 2 hours)
-    - retry_interval: Interval between reties (default: 60 seconds)
-
-    Returns:
-    - Triggers a Jenkins job and waits for its completion, then fetches the result.
-    """
-    try:
-        # Trigger the job
-        response = requests.post(
-            f"{job_url}/build",
-            auth=(username, api_token),
-            timeout=10
-        )
-        response.raise_for_status()
-
-    except RequestException as e:
-        print(f"Failed to trigger Jenkins job: {e}")
-        return {"status": "error", "message": str(e)}
-
-    print(f"Jenkins job triggered successfully.")
-    
-    time.sleep(15)
-
-    # Wait for the job to complete (with retries)
-    start_time = time.time()
-    while time.time() - start_time < wait_time_seconds:
-        try:
-            # Check the build status
-            response = requests.get(
-                f"{job_url}/lastBuild/api/json",
-                auth=(username, api_token),
-                timeout=10
-            )
-            response.raise_for_status()
-            build_info = response.json()
-
-            if build_info.get('building', False):
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Build #{build_info['number']} is in progress...")
-            else:
-                result = build_info.get('result')
-                build_number = build_info.get('number')
-                build_url = build_info.get('url')
-                print(f"Build #{build_number} completed with status: {result}")
-                print(f"Build URL: {build_url}")
-
-                # Return build information for GHA
-                return {
-                    "status": result,
-                    "build_number": build_number,
-                    "build_url": build_url,
-                }
-        except RequestException as e:
-            print(f"Error fetching build status: {e}")
-            return {"status": "error", "message": str(e)}
-
-        time.sleep(retry_interval)
-
-    print(f"Job did not complete within the specified wait time ({wait_time_seconds // 10} minutes).")
-    return {"status": "timeout", "message": "Job timed out"}
-    
-# Main entry point 
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python trigger_jenkins_job.py <job_url> <username> <api_token>")
-
-    job_url = sys.argv[1]
-    username = sys.argv[2]
-    api_token = sys.argv[3]
-
-    result = trigger_jenkins_job(job_url, username, api_token)
-    
-    # Output result for GitHub Actions
-    print(f"status={result['status']}")
-    if "build_number" in result and "build_url" in result:
-        print(f"build_number={result['build_number']}")
-        print(f"build_url={result['build_url']}")
-
-    # Exit with appropriate code
-    sys.exit(0 if result['status'] == "SUCCESS" else print(f"status={result['status']}"))
-    
-              
+jobs:
+  create-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: ${{ github.event.workflow.id }}
+          workflow_conclusion: completed
+          path: artifacts
+          
+      - name: Process Results and Create Dashboard
+        run: |
+          # Initialize dashboard with header
+          echo "# Jenkins Integration Tests Dashboard" > dashboard.md
+          
+          # Get unique team names and sort them
+          teams=$(find artifacts -type f -name "result_*.md" -exec grep "Team:" {} \; | cut -d' ' -f2- | sort -u)
+          
+          # Process results for each team
+          for team in $teams; do
+            echo -e "\n## $team" >> dashboard.md
+            echo "| Job Name | Build Number | Build URL | Status |" >> dashboard.md
+            echo "|-----------|--------------|-----------|---------|" >> dashboard.md
+            
+            # Find all result files for this team
+            find artifacts -type f -name "result_*.md" | while read -r file; do
+              # Check if file belongs to current team
+              if grep -q "Team: $team" "$file"; then
+                # Extract required fields
+                job_name=$(grep "Job Name:" "$file" | cut -d' ' -f3-)
+                build_num=$(grep "Build Number:" "$file" | cut -d' ' -f3-)
+                build_url=$(grep "Build URL:" "$file" | sed -n 's/.*\[\(.*\)\](\(.*\))/\2/p')
+                status=$(grep "Status:" "$file" | cut -d' ' -f3-)
+                
+                # Create table row
+                echo "| $job_name | $build_num | [Link]($build_url) | $status |" >> dashboard.md
+              fi
+            done
+          done
+          
+          # Add summary statistics
+          echo -e "\n## Summary Statistics" >> dashboard.md
+          echo "\`\`\`" >> dashboard.md
+          echo "Total Teams: $(echo "$teams" | wc -l)" >> dashboard.md
+          echo "Total Jobs: $(find artifacts -type f -name "result_*.md" | wc -l)" >> dashboard.md
+          echo "Successful Jobs: $(grep -r ":white_check_mark: SUCCESS" artifacts | wc -l)" >> dashboard.md
+          echo "Failed Jobs: $(grep -r ":x: FAILURE" artifacts | wc -l)" >> dashboard.md
+          echo "\`\`\`" >> dashboard.md
+          
+          # Add timestamp
+          echo -e "\n_Last updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')_" >> dashboard.md
+          
+          # Output to GitHub step summary
+          cat dashboard.md >> $GITHUB_STEP_SUMMARY
+          
+      - name: Upload dashboard
+        uses: actions/upload-artifact@v3
+        with:
+          name: jenkins-dashboard
+          path: dashboard.md
