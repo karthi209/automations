@@ -1,29 +1,25 @@
-import json
-
-def merge_reports(version_report_path, test_report_path, merged_report_path):
-    # Load the version data
-    with open(version_report_path, "r") as version_file:
-        version_data = json.load(version_file)
-
-    # Load the test data
-    with open(test_report_path, "r") as test_file:
-        test_data = json.load(test_file)
-
-    # Extract the tool name from the test report
-    tool_name = test_data.get("tool_name", "unknown_tool")
-
-    # Merge the reports
-    merged_report = {
-        "tool_name": tool_name,
-        "tool_versions": version_data,
-        "test_results": test_data
-    }
-
-    # Save the merged report
-    with open(merged_report_path, "w") as merged_file:
-        json.dump(merged_report, merged_file, indent=4)
-
-    print(f"Merged report saved at {merged_report_path}")
-
-# Example usage
-merge_reports("tool_versions.json", "test_report.json", "merged_report.json")
+- name: Create Workflow Summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.TAG }}
+          NEXT_TAG: ${{ env.NEXT_TAG }}
+        run: |
+          echo "## Summary - Integration Tests" > summary.md
+          echo "| :bookmark: Team | Job Name | Build Number | Build URL | Status |" >> summary.md
+          echo "|------|----------|--------------|-----------|--------|" >> summary.md
+          cat ./results/result.md | while read -r line; do
+            if [[ "$line" =~ Team: ]]; then
+              team=$(echo $line | cut -d' ' -f2)
+            elif [[ "$line" =~ "Job Name:" ]]; then
+              job_name=$(echo $line | cut -d' ' -f3-)
+            elif [[ "$line" =~ "Build Number:" ]]; then
+              build_number=$(echo $line | cut -d' ' -f3-)
+            elif [[ "$line" =~ "Build URL:" ]]; then
+              build_url=$(echo $line | cut -d' ' -f3-)
+            elif [[ "$line" =~ "Status:" ]]; then
+              status=$(echo $line | cut -d' ' -f2-)
+              # Add to the table
+              echo "| $team | $job_name | $build_number | $build_url | $status |" >> summary.md
+            fi
+          done
+          cat summary.md >> $GITHUB_STEP_SUMMARY
