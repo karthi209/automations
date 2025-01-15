@@ -1,25 +1,6 @@
-- name: Create Workflow Summary
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ env.TAG }}
-          NEXT_TAG: ${{ env.NEXT_TAG }}
-        run: |
-          echo "## Summary - Integration Tests" > summary.md
-          echo "| :bookmark: Team | Job Name | Build Number | Build URL | Status |" >> summary.md
-          echo "|------|----------|--------------|-----------|--------|" >> summary.md
-          cat ./results/result.md | while read -r line; do
-            if [[ "$line" =~ Team: ]]; then
-              team=$(echo $line | cut -d' ' -f2)
-            elif [[ "$line" =~ "Job Name:" ]]; then
-              job_name=$(echo $line | cut -d' ' -f3-)
-            elif [[ "$line" =~ "Build Number:" ]]; then
-              build_number=$(echo $line | cut -d' ' -f3-)
-            elif [[ "$line" =~ "Build URL:" ]]; then
-              build_url=$(echo $line | cut -d' ' -f3-)
-            elif [[ "$line" =~ "Status:" ]]; then
-              status=$(echo $line | cut -d' ' -f2-)
-              # Add to the table
-              echo "| $team | $job_name | $build_number | $build_url | $status |" >> summary.md
-            fi
-          done
-          cat summary.md >> $GITHUB_STEP_SUMMARY
+Team: test-team-1
+Job Name: test-job-1
+Build Number: 65
+Build URL: [Link](https://jenkins-bluemix.kp.org/view/DevSecOps/job/DEVOPS/job/Karthik-TestFolder/job/test1/65/)
+Status:  :white_check_mark: SUCCESS
+---
