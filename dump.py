@@ -61,19 +61,19 @@ print("Chart generated and saved as dashboard_chart.png")
 with open("dashboard_chart.png", "rb") as image_file:
     base64_img = base64.b64encode(image_file.read()).decode("utf-8")
 
-# Output the Base64 image string for embedding in the markdown
-print(f"Base64 Chart: {base64_img}")
+# Output the Base64 image string
+print(base64_img)
 EOF
 
     if [[ $? -eq 0 ]]; then
         debug_log "Chart generated and Base64 string created successfully"
-        # Embed the Base64 image in the GitHub Actions summary
-        base64_img=$(python3 -c "import sys; print(sys.stdin.read().strip())" <<< "$base64_img")
-        {
-            echo "### Dashboard Chart"
-            echo ""
-            echo "![Dashboard Chart](data:image/png;base64,$base64_img)"
-        } >> "$GITHUB_STEP_SUMMARY"
+        
+        # Embed the Base64 image into GitHub Actions summary
+        base64_img=$(python3 -c "import sys; print(sys.stdin.read().strip())" <<< "$(cat dashboard_chart.png | base64 -w 0)")
+
+        echo "### Dashboard Chart" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "![Dashboard Chart](data:image/png;base64,$base64_img)" >> "$GITHUB_STEP_SUMMARY"
     else
         debug_log "Failed to generate chart"
     fi
