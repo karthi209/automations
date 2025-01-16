@@ -1,102 +1,135 @@
-import requests
-import os
-import json
-from requests.exceptions import RequestException, ConnectionError, Timeout
+- name: Generate Dashboard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.TAG }}
+          NEXT_TAG: ${{ env.NEXT_TAG }}
+        shell: bash
+        id: generate_dashboard
+        run: |
+          #!/bin/bash
+          # Set error handling but preserve error codes
+          set -o pipefail
+          # Debug function with timestamp
+          debug_log() {
+              echo "[DEBUG $(date '+%H:%M:%S')] $1" >&2
+          }
+          # Function to safely handle integer operations
+          safe_add() {
+              local -i a=${1:-0}
+              local -i b=${2:-0}
+              echo $((a + b))
+          }
+          # Function to initialize dashboard file with headers
+          init_dashboard() {
+              local dashboard_file="$1"
+              debug_log "Initializing dashboard file: $dashboard_file"
+              {
+                  echo "## Summary - Unit Tests v$NEXT_TAG"
+                  echo ""
+                  echo -e "\n_Last updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')_"
+                  echo "| :bookmark: Tool   | Version | Installed | Molecule Test | :white_check_mark: OK | :ballot_box_with_check: Changed | :radio_button: Skipped | :x: Failed |"
+                  echo "|--------|----------|---------------|-----------------|----|---------|---------|--------|"
+              } > "$dashboard_file"
+              debug_log "Dashboard initialized"
+          }
+          # Function to parse tool details from each report file
+          extract_tool_info() {
+              local report_file="$1"
+              local tool_name="$2"
+              local dashboard_file="$3"
 
-def send_request():
-    url = "xxx"
-    
-    token = os.getenv('JIRA_API_TOKEN')
-    tag = os.getenv('TAG')
-    project_key = os.getenv('JIRA_PROJECT_KEY')
+              # Extract version, binary existence, and functional test result
+              local tool_version=$(grep -oP 'Toolversion:\s*\K[0-9]+\.[0-9]+(\.[0-9]+)?' "$report_file" | head -n 1 || echo "N/A")
+              tool_version=$(echo "$tool_version" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+              tool_version=$(echo "$tool_version" | xargs)
+              tool_version=$(echo "$tool_version" | awk '{print $1}')
 
-    # Debug environment variables (without exposing token)
-    print(f"Tag value: {tag}")
-    print(f"Project key: {project_key}")
-    print(f"Token present: {'Yes' if token else 'No'}")
-    
-    if not token:
-        raise ValueError("API token not found in environment variables")
-        
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "fields": {
-            "project": {
-                "key": project_key
-            },
-            "summary": f"GHA and Jenkins image versioned v{tag} ready for testing",
-            "issuetype": {
-                "name": "Task"
-            },
-            "description": f"""New image is now in staging and ready to be tested.
-            Please use the label "staging" to test images.
-            
-            Refer below links for testing results and pre-release notes.
-            
-            Pre-release notes for image version v{tag}
-            https://github.xxx.com/devsecops/agent_build/releases/tag/{tag}.jenkins.bluemix.all.tools
-            
-            Unit testing results
-            https://github.xxx.com/devsecops/agent_build/wiki/unit_test_results_v{tag}
-            
-            Integration testing results (User provided jobs) 
-            https://github.xxx.com/devsecops/agent_build/wiki/integration_test_results_v{tag}
-            
-            Molecule testing results
-            https://github.xxx.com/devsecops/agent_build/wiki/molecule_test_results_v{tag}
-            
-            Please comment in this ticket for feedback."""
-        }
-    }
-    
-    try:
-        print("\nSending request with:")
-        print(f"URL: {url}")
-        print("Headers:", {k: v if k != 'Authorization' else '[REDACTED]' for k, v in headers.items()})
-        print("Payload:", json.dumps(payload, indent=2))
-        
-        with requests.Session() as session:
-            response = session.post(
-                url,
-                headers=headers,
-                json=payload
-            )
-            
-            print(f"\nResponse Status Code: {response.status_code}")
-            print("Response Headers:", dict(response.headers))
-            print("Response Body:", response.text)
-            
-            if response.status_code == 400:
-                try:
-                    error_details = response.json()
-                    print("\nDetailed error information:", json.dumps(error_details, indent=2))
-                except:
-                    print("Could not parse error response as JSON")
-            
-            response.raise_for_status()
-            
-            data = response.json()
-            return data
-            
-    except ConnectionError as e:
-        print(f"Connection failed: {e}")
-    except Timeout as e:
-        print(f"Request timed out: {e}")
-    except RequestException as e:
-        print(f"Request failed: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"Error response: {e.response.text}")
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse response: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-    
-    return None
+              debug_log "Extracted tool version: '$tool_version'"
 
-if __name__ == "__main__":
-    result = send_request()
+              local binary_exists=$(grep -q 'Binary exists in the path' "$report_file" && echo ":white_check_mark: Yes" || echo ":x: No")
+              local functional_test=$(grep -q 'Functional test success' "$report_file" && echo ":white_check_mark: Success" || echo ":x: Failed")
+
+              # Initialize test counts
+              declare -i ok_count=0
+              declare -i changed_count=0
+              declare -i skipped_count=0
+              declare -i failed_count=0
+
+              # Parse test results from "PLAY RECAP" line
+              while IFS= read -r line || [[ -n "$line" ]]; do
+                  if [[ "$line" == *"PLAY RECAP"* ]]; then
+                      debug_log "Found PLAY RECAP marker in $report_file"
+
+                      # Read next line safely
+                      if ! read -r next_line; then
+                          debug_log "No more lines after PLAY RECAP in $report_file"
+                          continue
+                      fi
+
+                      parse_test_line "$next_line" ok_count changed_count skipped_count failed_count
+                  fi
+              done < "$report_file"
+
+              # Append results to dashboard in a single row
+              echo "| [$tool_name](https://github.kp.org/devsecops/$tool_name.git) | $tool_version | $binary_exists | $functional_test | $ok_count | $changed_count | $skipped_count | $failed_count |" >> "$dashboard_file"
+              
+              debug_log "Appended $tool_name results to dashboard"
+
+          }
+          # Function to parse individual test line and accumulate states
+          parse_test_line() {
+              local line="$1"
+              local -n ok_ref="$2"
+              local -n changed_ref="$3"
+              local -n skipped_ref="$4"
+              local -n failed_ref="$5"
+              debug_log "Parsing test line: $line"
+              local ok_temp=0
+              local changed_temp=0
+              local skipped_temp=0
+              local failed_temp=0
+              # Extract each state if present
+              [[ "$line" =~ .*ok=([0-9]+).* ]] && ok_temp=${BASH_REMATCH[1]}
+              [[ "$line" =~ .*changed=([0-9]+).* ]] && changed_temp=${BASH_REMATCH[1]}
+              [[ "$line" =~ .*skipped=([0-9]+).* ]] && skipped_temp=${BASH_REMATCH[1]}
+              [[ "$line" =~ .*failed=([0-9]+).* ]] && failed_temp=${BASH_REMATCH[1]}
+              # Update totals
+              ok_ref=$(safe_add "$ok_ref" "$ok_temp")
+              changed_ref=$(safe_add "$changed_ref" "$changed_temp")
+              skipped_ref=$(safe_add "$skipped_ref" "$skipped_temp")
+              failed_ref=$(safe_add "$failed_ref" "$failed_temp")
+              debug_log "Updated test counts - OK: $ok_ref, Changed: $changed_ref, Skipped: $skipped_ref, Failed: $failed_ref"
+          }
+          main() {
+              debug_log "Script started"
+              local dashboard_file="dashboard.md"
+              init_dashboard "$dashboard_file"
+              debug_log "Current directory contents:"
+              ls -la >&2
+              # Process each report file
+              for report in molecule-test-*.txt; do
+                  if [[ ! -f "$report" ]]; then
+                      debug_log "No molecule test reports found"
+                      break
+                  fi
+                  debug_log "Processing report: $report"
+                  local tool_name
+                  tool_name=$(echo "$report" | sed 's/molecule-test-\(.*\)\.txt/\1/')
+                  debug_log "Processing tool: $tool_name"
+                  # Extract tool info and test results, and update the dashboard
+                  extract_tool_info "$report" "$tool_name" "$dashboard_file"
+              done
+              debug_log "Dashboard file contents:"
+              cat "$dashboard_file" >&2
+              # Display dashboard
+              cat "$dashboard_file"
+              # Update GitHub Actions summary if available
+              if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+                  debug_log "Updating GitHub Actions summary"
+                  {
+                      cat "$dashboard_file"
+                  } >> "$GITHUB_STEP_SUMMARY"
+              fi
+              debug_log "Script completed successfully"
+          }
+          main "$@"
