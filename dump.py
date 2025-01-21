@@ -1,80 +1,41 @@
-generate_chart() {
-    debug_log "Generating chart from dashboard data"
-    python3 - <<EOF
 import os
-import pandas as pd
-import matplotlib.pyplot as plt
-import base64
+import subprocess
+import pytest
 
-# Check if the dashboard file exists
-dashboard_file = "dashboard.md"
-if not os.path.exists(dashboard_file):
-    print("Dashboard file not found. Skipping chart generation.")
-    exit(0)
 
-# Parse the dashboard file to extract Molecule Test results
-data = []
-with open(dashboard_file, "r") as file:
-    lines = file.readlines()
-    for line in lines:
-        if line.startswith("|") and not line.startswith("| :bookmark:"):
-            parts = line.split("|")
-            if len(parts) >= 5:
-                molecule_test = parts[4].strip()
-                if molecule_test == ":white_check_mark: Success":
-                    data.append("Success")
-                elif molecule_test == ":x: Failed":
-                    data.append("Failed")
+# List of alternatives to test
+JAVA_ALTERNATIVES = [
+    "java",
+    "javac",
+    "keytool",
+    "jar"
+]
 
-# Count the number of successes and failures
-results = pd.Series(data).value_counts()
-success_count = results.get("Success", 0)
-failure_count = results.get("Failed", 0)
 
-# If no data, skip chart generation
-if success_count == 0 and failure_count == 0:
-    print("No test results to plot.")
-    exit(0)
+@pytest.mark.parametrize("alternative", JAVA_ALTERNATIVES)
+def test_alternative_exists(alternative):
+    """Check if the symlink for the given alternative exists in /etc/alternatives."""
+    symlink_path = f"/etc/alternatives/{alternative}"
+    assert os.path.islink(symlink_path), f"{symlink_path} is not a symlink."
+    assert os.path.exists(os.readlink(symlink_path)), f"Target for {symlink_path} does not exist."
 
-# Plot pie chart
-labels = ["Passed", "Failed"]
-sizes = [success_count, failure_count]
-colors = ["#4CAF50", "#F44336"]  # Green for passed, red for failed
 
-plt.figure(figsize=(6, 6))
-plt.pie(
-    sizes,
-    labels=labels,
-    autopct="%1.1f%%",
-    startangle=90,
-    colors=colors,
-    wedgeprops={"edgecolor": "black"},
-)
-plt.title("Molecule Test Results: Pass vs Fail")
-plt.tight_layout()
+@pytest.mark.parametrize("alternative", JAVA_ALTERNATIVES)
+def test_alternative_points_to_correct_version(alternative):
+    """Check if the alternative points to the correct Java version."""
+    symlink_path = f"/etc/alternatives/{alternative}"
+    target_path = os.readlink(symlink_path)  # Resolve the symlink
+    assert "java" in target_path.lower(), f"{symlink_path} does not point to a Java binary."
+    assert os.path.exists(target_path), f"The target binary {target_path} does not exist."
 
-# Save chart to file
-plt.savefig("dashboard_chart.png")
-print("Chart generated and saved as dashboard_chart.png")
 
-# Convert chart image to Base64
-with open("dashboard_chart.png", "rb") as image_file:
-    base64_img = base64.b64encode(image_file.read()).decode("utf-8")
-
-# Output the Base64 image string
-print(base64_img)
-EOF
-
-    if [[ $? -eq 0 ]]; then
-        debug_log "Chart generated and Base64 string created successfully"
-        
-        # Embed the Base64 image into GitHub Actions summary
-        base64_img=$(python3 -c "import sys; print(sys.stdin.read().strip())" <<< "$(cat dashboard_chart.png | base64 -w 0)")
-
-        echo "### Dashboard Chart" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        echo "![Dashboard Chart](data:image/png;base64,$base64_img)" >> "$GITHUB_STEP_SUMMARY"
-    else
-        debug_log "Failed to generate chart"
-    fi
-}
+@pytest.mark.parametrize("alternative", JAVA_ALTERNATIVES)
+def test_alternative_executable(alternative):
+    """Check if the alternative executable runs correctly."""
+    try:
+        output = subprocess.check_output([alternative, "-version"], stderr=subprocess.STDOUT, text=True)
+        assert "java" in output.lower(), f"{alternative} -version did not return expected output."
+    except FileNotFoundError:
+        pytest.fail(f"{alternative} is not executable or not found in PATH.")
+    except subprocess.CalledProcessError as e:
+        pytest.fail(f"Error while running {alternative}: {e}")
