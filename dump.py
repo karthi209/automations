@@ -1,41 +1,54 @@
-import os
-import subprocess
-import pytest
+import json
+import collections
+from datetime import datetime
 
+def process_test_results(json_data):
+    # Parse the JSON data
+    data = json.loads(json_data)
+    
+    # Create a dictionary to store results for each tool
+    results = collections.defaultdict(lambda: {'passed': 0, 'total': 0})
+    
+    current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        
+    # Process each test result
+    for test in data['tests']:
+        # Extract tool name from test path
+        tool = test['nodeid'].split('/')[1].split('_')[1].split('.')[0]
+        
+        # Count passed tests and total tests
+        results[tool]['total'] += 1
+        if test['outcome'] == 'passed':
+            results[tool]['passed'] += 1
+            
+    # Generate markdown content
+    markdown_content = "## Summary - Unit Tests\n\n"
+    markdown_content = f"_Last updated: {current_time}_\n\n"
+    markdown_content += "| Tool | Tests Passed | Final Health |\n"
+    markdown_content += "|------|--------------|---------------|\n"
+    
+    # Add each tool's results
+    for tool, counts in results.items():
+        passed_fraction = f"{counts['passed']}/{counts['total']}"
+        health = "✅ HEALTHY" if counts['passed'] == counts['total'] else "❌ UNHEALTHY"
+        
+        markdown_content += f"| {tool} | {passed_fraction} | {health} |\n"
+    
+    return markdown_content
 
-# List of alternatives to test
-JAVA_ALTERNATIVES = [
-    "java",
-    "javac",
-    "keytool",
-    "jar"
-]
+def save_markdown(content, filename="test_results.md"):
+    with open(filename, 'w') as f:
+        f.write(content)
 
-
-@pytest.mark.parametrize("alternative", JAVA_ALTERNATIVES)
-def test_alternative_exists(alternative):
-    """Check if the symlink for the given alternative exists in /etc/alternatives."""
-    symlink_path = f"/etc/alternatives/{alternative}"
-    assert os.path.islink(symlink_path), f"{symlink_path} is not a symlink."
-    assert os.path.exists(os.readlink(symlink_path)), f"Target for {symlink_path} does not exist."
-
-
-@pytest.mark.parametrize("alternative", JAVA_ALTERNATIVES)
-def test_alternative_points_to_correct_version(alternative):
-    """Check if the alternative points to the correct Java version."""
-    symlink_path = f"/etc/alternatives/{alternative}"
-    target_path = os.readlink(symlink_path)  # Resolve the symlink
-    assert "java" in target_path.lower(), f"{symlink_path} does not point to a Java binary."
-    assert os.path.exists(target_path), f"The target binary {target_path} does not exist."
-
-
-@pytest.mark.parametrize("alternative", JAVA_ALTERNATIVES)
-def test_alternative_executable(alternative):
-    """Check if the alternative executable runs correctly."""
-    try:
-        output = subprocess.check_output([alternative, "-version"], stderr=subprocess.STDOUT, text=True)
-        assert "java" in output.lower(), f"{alternative} -version did not return expected output."
-    except FileNotFoundError:
-        pytest.fail(f"{alternative} is not executable or not found in PATH.")
-    except subprocess.CalledProcessError as e:
-        pytest.fail(f"Error while running {alternative}: {e}")
+# Example usage
+if __name__ == "__main__":
+    # Read the input file
+    with open('test_report.json', 'r') as f:
+        json_data = f.read()
+    
+    # Process and generate markdown
+    markdown_content = process_test_results(json_data)
+    
+    # Save to file
+    save_markdown(markdown_content)
+    print("Markdown file generated successfully!")
