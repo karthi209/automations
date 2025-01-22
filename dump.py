@@ -45,11 +45,12 @@ def process_test_results(json_data):
     # Add failure details, if any
     if failures:
         markdown_content += "\n## Failure Details\n\n"
-        markdown_content += "| Tool | Test Name | Failure Message |\n"
-        markdown_content += "|------|-----------|-----------------|\n"
-        
         for failure in failures:
-            markdown_content += f"| {failure['tool']} | {failure['test_name']} | {failure['message']} |\n"
+            markdown_content += f"### Tool: {failure['tool']}\n"
+            markdown_content += f"**Test Name:** {failure['test_name']}\n"
+            markdown_content += "```plaintext\n"
+            markdown_content += f"{failure['message']}\n"
+            markdown_content += "```\n\n"
     
     return markdown_content
 
