@@ -1,28 +1,44 @@
-def test_multiple_file_permissions_and_ownership():
-    files_with_details = {
-        "/path/to/file1.txt": {"permissions": stat.S_IRUSR | stat.S_IWUSR, "owner": "user1"},
-        "/path/to/file2.txt": {"permissions": stat.S_IRUSR | stat.S_IRGRP, "owner": "user2"},
-    }
-    
-    for file_path, details in files_with_details.items():
-        expected_permissions = details["permissions"]
-        expected_owner = details["owner"]
+import subprocess
+import os
 
-        # Check if the file exists
-        assert os.path.exists(file_path), f"File does not exist at: {file_path}"
 
-        # Get file metadata
-        file_stat = os.stat(file_path)
+def test_node_version():
+    """Test if Node.js is installed and get its version."""
+    try:
+        # Run the 'node -v' command to get the version
+        result = subprocess.run(["node", "-v"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        node_version = result.stdout.strip()
+        assert node_version.startswith("v"), f"Unexpected Node.js version format: {node_version}"
+        print(f"Node.js version: {node_version}")
+    except FileNotFoundError:
+        raise AssertionError("Node.js is not installed or not in PATH.")
+    except subprocess.CalledProcessError as e:
+        raise AssertionError(f"Error running Node.js: {e.stderr}")
 
-        # Check permissions
-        actual_permissions = file_stat.st_mode & 0o777
-        assert actual_permissions == expected_permissions, (
-            f"File permissions for {file_path} are {oct(actual_permissions)}, "
-            f"but expected {oct(expected_permissions)}"
+
+def test_node_functionality():
+    """Test if Node.js can execute a simple JavaScript program."""
+    # JavaScript code to test basic functionality
+    js_code = """
+        console.log("Node.js is working!");
+        const result = [1, 2, 3].map(x => x * 2);
+        console.log("Array result:", result);
+    """
+
+    try:
+        # Run the JavaScript code with Node.js
+        result = subprocess.run(
+            ["node", "-e", js_code],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
-
-        # Check ownership
-        actual_owner = pwd.getpwuid(file_stat.st_uid).pw_name
-        assert actual_owner == expected_owner, (
-            f"File owner for {file_path} is {actual_owner}, but expected {expected_owner}"
-        )
+        stdout = result.stdout.strip()
+        assert "Node.js is working!" in stdout, "Node.js script did not run as expected."
+        assert "Array result: [ 2, 4, 6 ]" in stdout, f"Unexpected script output: {stdout}"
+        print(stdout)
+    except FileNotFoundError:
+        raise AssertionError("Node.js is not installed or not in PATH.")
+    except subprocess.CalledProcessError as e:
+        raise AssertionError(f"Error running Node.js script: {e.stderr}")
