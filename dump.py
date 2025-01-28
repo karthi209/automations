@@ -1,28 +1,34 @@
 #!/bin/bash
 
-# Array of instance names
-instances=("gradle_instance" "another_instance" "yet_another_instance")
+molecule converge
 
-# Run through each instance
-for instance in "${instances[@]}"; do
-  echo "Processing instance: $instance"
+# Array of instance names and associated users
+declare -A instance_users=(
+  ["instance_git"]="git"
+  ["instance_git_scale_set"]="jenkins"
+)
 
-  # Molecule converge
-  molecule converge -s "$instance"
+for instance in "${!instance_users[@]}"; do
+  user="${instance_users[$instance]}"
+  echo "Processing instance: $instance with user: $user"
 
-  # Copy test file
-  docker cp tests/test_gradle.py "$instance:/tmp/test_gradle.py"
-  docker exec -u root "$instance" chmod +x /tmp/test_gradle.py
+  # Copy test file and adjust ownership
+  if docker cp --help | grep -q -- "--chown"; then
+    docker cp --chown="$user:$user" tests/test_git.py "$instance:/tmp/test_git.py"
+  else
+    docker cp tests/test_git.py "$instance:/tmp/test_git.py"
+    docker exec "$instance" chown "$user:$user" /tmp/test_git.py
+  fi
+  docker exec "$instance" chmod +x /tmp/test_git.py
 
   # Create venv and install pytest
-  docker exec "$instance" python -m venv /tmp/venv
-  docker exec "$instance" bash -c "source /tmp/venv/bin/activate && pip install pytest"
+  docker exec -u "$user" "$instance" python -m venv /tmp/venv
+  docker exec -u "$user" "$instance" bash -c "source /tmp/venv/bin/activate && pip install pytest"
 
   # Run test with activated venv
-  docker exec "$instance" bash -c "source /tmp/venv/bin/activate && pytest /tmp/test_gradle.py"
-
-  # Molecule destroy
-  molecule destroy -s "$instance"
+  docker exec -u "$user" "$instance" bash -c "source /tmp/venv/bin/activate && pytest /tmp/test_git.py"
 
   echo "Completed instance: $instance"
 done
+
+molecule destroy
