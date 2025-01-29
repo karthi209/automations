@@ -1,18 +1,8 @@
 import pytest
-import subprocess
+from pathlib import Path
 
-@pytest.mark.parametrize("command", [
-    ("git", "--version"),
-    ("git-lfs", "--version"),
-    ("gh", "--version"),
+@pytest.mark.parametrize("filepaths", [
+    (Path("/app/runner/file"), Path("/app/jenkins-agent/file"))
 ])
-def test_command_installed(command):
-    cmd, version_flag = command
-    try:
-        result = subprocess.run([cmd, version_flag], capture_output=True, text=True, check=True)
-        assert result.returncode == 0, f"{cmd} is not installed or not working correctly"
-        assert result.stdout, f"{cmd} version output is empty"
-    except FileNotFoundError:
-        pytest.fail(f"{cmd} is not installed")
-    except subprocess.CalledProcessError:
-        pytest.fail(f"{cmd} command failed")
+def test_either_file_exists(filepaths):
+    assert any(filepath.exists() for filepath in filepaths), f"Neither {filepaths[0]} nor {filepaths[1]} exists"
