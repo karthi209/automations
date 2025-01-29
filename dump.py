@@ -1,39 +1,25 @@
-#!/bin/bash
+import pytest
+import pwd
+import grp
+import os
 
-cd ..
-molecule converge
+@pytest.mark.parametrize("username, expected_group, expected_home", [
+    ("testuser", "testgroup", "/home/testuser")
+])
+def test_user(username, expected_group, expected_home):
+    try:
+        user_info = pwd.getpwnam(username)
+    except KeyError:
+        pytest.fail(f"User {username} does not exist")
 
-tool="git"
-test_file="test_${tool}.py"
+    assert user_info.pw_name == username, f"Expected username {username}, but got {user_info.pw_name}"
+    assert user_info.pw_dir == expected_home, f"Expected home {expected_home}, but got {user_info.pw_dir}"
 
-# Array of instance names and associated users
-declare -A instance_users=(
-    ["instance_git"]="jenkins"
-    ["instance_git_scale_set"]="runner"
-)
+    # Check the primary group
+    actual_group = grp.getgrgid(user_info.pw_gid).gr_name
+    assert actual_group == expected_group, f"Expected group {expected_group}, but got {actual_group}"
 
-for instance in "${!instance_users[@]}"; do
-    user="${instance_users[$instance]}"
-    echo "Processing instance: $instance with user: $user"
+    # Ensure user is in the group
+    group_members = grp.getgrnam(expected_group).gr_mem
+    assert username in group_members, f"User {username} is not in group {expected_group}"
 
-    # Copy test file and adjust ownership
-    if docker cp --help | grep -q -- "--chown"; then
-        docker cp --chown="$user:$user" "tests/$test_file" "$instance:/tmp/$test_file"
-    else
-        docker cp "tests/$test_file" "$instance:/tmp/$test_file"
-        docker exec "$instance" chown "$user:$user" "/tmp/$test_file"
-    fi
-
-    docker exec "$instance" chmod +x "/tmp/$test_file"
-
-    # Create venv and install pytest
-    docker exec -u "$user" "$instance" python -m venv /tmp/venv
-    docker exec -u "$user" "$instance" bash -c "source /tmp/venv/bin/activate && pip install pytest"
-
-    # Run test with activated venv
-    docker exec -u "$user" "$instance" bash -c "source /tmp/venv/bin/activate && pytest /tmp/$test_file"
-
-    echo "Completed instance: $instance"
-done
-
-molecule destroy
