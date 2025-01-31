@@ -1,40 +1,44 @@
 import subprocess
-import os
-import pytest
+import sys
 
-COSIGN_PASSWORD = ""
+def check_pip_installation():
+    """Check if databricks-sql-cli is installed via pip."""
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "show", "databricks-sql-cli"],
+        capture_output=True,
+        text=True
+    )
+    if "Name: databricks-sql-cli" not in result.stdout:
+        print("[ERROR] databricks-sql-cli is NOT installed.")
+        sys.exit(1)
+    print("[OK] databricks-sql-cli is installed.")
 
-@pytest.fixture(scope="module")
-def setup_files():
-    """Setup test file and generate Cosign keys."""
-    # Create a test file
-    with open("/tmp/test.txt", "w") as f:
-        f.write("test")
+def check_python_import():
+    """Check if databricks-sql-cli can be imported in Python."""
+    try:
+        import databricks_sql_cli
+        print("[OK] Python import for databricks_sql_cli is successful.")
+    except ImportError:
+        print("[ERROR] Python module 'databricks_sql_cli' not found.")
+        sys.exit(1)
 
-    # Generate Cosign key pair if not exists
-    if not os.path.exists("/root/cosign.key") or not os.path.exists("/root/cosign.pub"):
-        subprocess.run(["cosign", "generate-key-pair"], env={"COSIGN_PASSWORD": COSIGN_PASSWORD}, check=True)
+def check_cli_execution():
+    """Check if databricks-sql CLI runs without errors."""
+    result = subprocess.run(
+        ["databricks-sql", "--help"],
+        capture_output=True,
+        text=True
+    )
+    if "Usage: databricks-sql [OPTIONS] COMMAND" in result.stdout:
+        print("[OK] databricks-sql CLI is working.")
+    else:
+        print("[ERROR] databricks-sql CLI command failed.")
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
+        sys.exit(1)
 
-    yield
-
-    # Cleanup
-    os.remove("/tmp/test.txt")
-    os.remove("/tmp/test.txt.sig")
-
-def test_cosign_sign_and_verify(setup_files):
-    """Test signing and verifying a file using Cosign."""
-
-    # Sign file
-    sign_cmd = ["cosign", "sign-blob", "-y", "--key", "/root/cosign.key", "/tmp/test.txt"]
-    sign_proc = subprocess.run(sign_cmd, env={"COSIGN_PASSWORD": COSIGN_PASSWORD}, check=True, capture_output=True, text=True)
-    signature = sign_proc.stdout.strip()
-
-    # Save signature to a file
-    with open("/tmp/test.txt.sig", "w") as sig_file:
-        sig_file.write(signature)
-
-    # Verify signature
-    verify_cmd = ["cosign", "verify-blob", "--key", "/root/cosign.pub", "--signature", "/tmp/test.txt.sig", "/tmp/test.txt"]
-    verify_proc = subprocess.run(verify_cmd, env={"COSIGN_PASSWORD": COSIGN_PASSWORD}, capture_output=True, text=True)
-
-    assert "Verified OK" in verify_proc.stdout, "Cosign verification failed!"
+if __name__ == "__main__":
+    check_pip_installation()
+    check_python_import()
+    check_cli_execution()
+    print("[SUCCESS] All checks passed!")
