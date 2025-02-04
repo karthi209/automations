@@ -19,24 +19,38 @@ def save_to_tempfile(content):
     temp_file.close()
     return temp_file.name
 
-def compare_files(file1, file2, description):
-    """Compare two files and print differences."""
-    if os.stat(file1).st_size == 0 and os.stat(file2).st_size == 0:
-        print(f"[+] No {description} changes found.")
-        return
+def compare_content(old_content, new_content, section_title):
+    """Compare two sets of content and return differences as a list."""
+    if not old_content.strip() and not new_content.strip():
+        return []
 
-    with open(file1, "r") as f1, open(file2, "r") as f2:
-        content1, content2 = f1.readlines(), f2.readlines()
+    old_lines = set(old_content.splitlines())
+    new_lines = set(new_content.splitlines())
+    diff = new_lines - old_lines
 
-    diff = set(content2) - set(content1)
     if diff:
-        print(f"\n[+] {description} Differences:")
-        for line in diff:
-            print(line.strip())
+        return [f"### {section_title}\n"] + [f"- {line}" for line in diff]
+    return []
+
+def generate_report(report_sections):
+    """Generate a Markdown report with all detected differences."""
+    report_file = "docker_image_comparison_report.md"
+    with open(report_file, "w") as f:
+        f.write("# Docker Image Comparison Report\n\n")
+        f.write(f"**Old Image:** `{sys.argv[1]}`\n\n")
+        f.write(f"**New Image:** `{sys.argv[2]}`\n\n")
+
+        if any(report_sections):
+            for section in report_sections:
+                f.write("\n".join(section) + "\n\n")
+        else:
+            f.write("No significant differences found.\n")
+
+    print(f"\n✅ Report saved as `{report_file}`")
 
 def compare_docker_images(image1, image2):
-    """Compare two Docker images in terms of filesystem, packages, environment, layers, and metadata."""
-    print(f"[*] Pulling images {image1} and {image2} to ensure latest versions...")
+    """Compare two Docker images and generate a detailed report."""
+    print(f"[*] Pulling images {image1} and {image2} to ensure the latest versions...")
     subprocess.run(f"docker pull {image1}", shell=True)
     subprocess.run(f"docker pull {image2}", shell=True)
 
@@ -47,13 +61,13 @@ def compare_docker_images(image1, image2):
     subprocess.run(f"docker create --name {container1} {image1}", shell=True)
     subprocess.run(f"docker create --name {container2} {image2}", shell=True)
 
+    report_sections = []
+
     # 1. Compare File System
     print("\n[*] Comparing File System Changes...")
     diff1 = run_command(f"docker diff {container1}")
     diff2 = run_command(f"docker diff {container2}")
-
-    diff_file1, diff_file2 = save_to_tempfile(diff1), save_to_tempfile(diff2)
-    compare_files(diff_file1, diff_file2, "File System")
+    report_sections.append(compare_content(diff1, diff2, "File System Changes"))
 
     # 2. Compare Installed Packages
     print("\n[*] Comparing Installed Packages...")
@@ -64,42 +78,52 @@ def compare_docker_images(image1, image2):
 
     pkgs1 = run_command(f"docker run --rm {image1} sh -c '{package_cmd}'")
     pkgs2 = run_command(f"docker run --rm {image2} sh -c '{package_cmd}'")
-
-    pkgs_file1, pkgs_file2 = save_to_tempfile(pkgs1), save_to_tempfile(pkgs2)
-    compare_files(pkgs_file1, pkgs_file2, "Installed Packages")
+    report_sections.append(compare_content(pkgs1, pkgs2, "Installed Packages"))
 
     # 3. Compare Environment Variables
     print("\n[*] Comparing Environment Variables...")
     env1 = run_command(f"docker run --rm {image1} env")
     env2 = run_command(f"docker run --rm {image2} env")
-
-    env_file1, env_file2 = save_to_tempfile(env1), save_to_tempfile(env2)
-    compare_files(env_file1, env_file2, "Environment Variables")
+    report_sections.append(compare_content(env1, env2, "Environment Variables"))
 
     # 4. Compare Image Layers
     print("\n[*] Comparing Image Layers...")
     layers1 = run_command(f"docker history --no-trunc {image1}")
     layers2 = run_command(f"docker history --no-trunc {image2}")
-
-    layers_file1, layers_file2 = save_to_tempfile(layers1), save_to_tempfile(layers2)
-    compare_files(layers_file1, layers_file2, "Image Layers")
+    report_sections.append(compare_content(layers1, layers2, "Image Layers"))
 
     # 5. Compare Metadata
     print("\n[*] Comparing Image Metadata...")
-    metadata1 = json.loads(run_command(f"docker inspect {image1}"))
-    metadata2 = json.loads(run_command(f"docker inspect {image2}"))
-
-    metadata_diff = {key: metadata2[0][key] for key in metadata2[0] if metadata1[0].get(key) != metadata2[0].get(key)}
+    metadata1 = json.loads(run_command(f"docker inspect {image1}"))[0]
+    metadata2 = json.loads(run_command(f"docker inspect {image2}"))[0]
+    metadata_diff = {key: metadata2[key] for key in metadata2 if metadata1.get(key) != metadata2.get(key)}
     if metadata_diff:
-        print("\n[+] Metadata Differences:")
-        print(json.dumps(metadata_diff, indent=4))
+        report_sections.append(["### Image Metadata Differences"] + [f"- `{key}`: {metadata_diff[key]}" for key in metadata_diff])
 
-    # Cleanup temporary containers and files
+    # 6. Compare Configurations
+    print("\n[*] Comparing Image Configurations...")
+    config1 = run_command(f"docker inspect -f '{{{{json .Config}}}}' {image1}")
+    config2 = run_command(f"docker inspect -f '{{{{json .Config}}}}' {image2}")
+    report_sections.append(compare_content(config1, config2, "Configuration Differences"))
+
+    # 7. Compare Exposed Ports & Networking
+    print("\n[*] Comparing Exposed Ports & Networking...")
+    network1 = run_command(f"docker inspect -f '{{{{json .NetworkSettings}}}}' {image1}")
+    network2 = run_command(f"docker inspect -f '{{{{json .NetworkSettings}}}}' {image2}")
+    report_sections.append(compare_content(network1, network2, "Exposed Ports & Networking"))
+
+    # 8. Compare Volumes & Mount Points
+    print("\n[*] Comparing Volumes & Mount Points...")
+    volumes1 = run_command(f"docker inspect -f '{{{{json .Mounts}}}}' {image1}")
+    volumes2 = run_command(f"docker inspect -f '{{{{json .Mounts}}}}' {image2}")
+    report_sections.append(compare_content(volumes1, volumes2, "Volumes & Mount Points"))
+
+    # Cleanup temporary containers
     print(f"\n[*] Cleaning up temporary containers: {container1} & {container2}...")
     subprocess.run(f"docker rm {container1} {container2}", shell=True)
 
-    for temp_file in [diff_file1, diff_file2, pkgs_file1, pkgs_file2, env_file1, env_file2, layers_file1, layers_file2]:
-        os.remove(temp_file)
+    # Generate final report
+    generate_report(report_sections)
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
