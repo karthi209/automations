@@ -3,16 +3,28 @@ import sys
 import json
 import tempfile
 import os
+import uuid
 
 def run_command(command):
-    """Run a shell command and return its output."""
+    """Run a shell command and return its output or error."""
     try:
-        return subprocess.check_output(command, shell=True, text=True)
+        return subprocess.check_output(command, shell=True, text=True).strip()
     except subprocess.CalledProcessError as e:
-        return f"Error executing command: {command}\n{e.output}"
+        return f"Error: {e.output.strip()}"
+
+def save_to_tempfile(content):
+    """Save content to a temporary file and return the filename."""
+    temp_file = tempfile.NamedTemporaryFile(delete=False)
+    temp_file.write(content.encode())
+    temp_file.close()
+    return temp_file.name
 
 def compare_files(file1, file2, description):
     """Compare two files and print differences."""
+    if os.stat(file1).st_size == 0 and os.stat(file2).st_size == 0:
+        print(f"[+] No {description} changes found.")
+        return
+
     with open(file1, "r") as f1, open(file2, "r") as f2:
         content1, content2 = f1.readlines(), f2.readlines()
 
@@ -22,28 +34,26 @@ def compare_files(file1, file2, description):
         for line in diff:
             print(line.strip())
 
-def save_to_tempfile(content):
-    """Save content to a temporary file and return the filename."""
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    temp_file.write(content.encode())
-    temp_file.close()
-    return temp_file.name
-
 def compare_docker_images(image1, image2):
-    print(f"Comparing {image1} with {image2}...\n")
+    """Compare two Docker images in terms of filesystem, packages, environment, layers, and metadata."""
+    print(f"[*] Pulling images {image1} and {image2} to ensure latest versions...")
+    subprocess.run(f"docker pull {image1}", shell=True)
+    subprocess.run(f"docker pull {image2}", shell=True)
+
+    # Generate unique container names
+    container1, container2 = f"compare_{uuid.uuid4().hex[:8]}", f"compare_{uuid.uuid4().hex[:8]}"
+    
+    print(f"\n[*] Creating temporary containers: {container1} & {container2}...")
+    subprocess.run(f"docker create --name {container1} {image1}", shell=True)
+    subprocess.run(f"docker create --name {container2} {image2}", shell=True)
 
     # 1. Compare File System
-    print("[*] Comparing File System Changes...")
-    subprocess.run(f"docker create --name temp1 {image1}", shell=True)
-    subprocess.run(f"docker create --name temp2 {image2}", shell=True)
-    
-    diff1 = run_command("docker diff temp1")
-    diff2 = run_command("docker diff temp2")
-    
+    print("\n[*] Comparing File System Changes...")
+    diff1 = run_command(f"docker diff {container1}")
+    diff2 = run_command(f"docker diff {container2}")
+
     diff_file1, diff_file2 = save_to_tempfile(diff1), save_to_tempfile(diff2)
     compare_files(diff_file1, diff_file2, "File System")
-    
-    subprocess.run("docker rm temp1 temp2", shell=True)
 
     # 2. Compare Installed Packages
     print("\n[*] Comparing Installed Packages...")
@@ -54,7 +64,7 @@ def compare_docker_images(image1, image2):
 
     pkgs1 = run_command(f"docker run --rm {image1} sh -c '{package_cmd}'")
     pkgs2 = run_command(f"docker run --rm {image2} sh -c '{package_cmd}'")
-    
+
     pkgs_file1, pkgs_file2 = save_to_tempfile(pkgs1), save_to_tempfile(pkgs2)
     compare_files(pkgs_file1, pkgs_file2, "Installed Packages")
 
@@ -84,7 +94,10 @@ def compare_docker_images(image1, image2):
         print("\n[+] Metadata Differences:")
         print(json.dumps(metadata_diff, indent=4))
 
-    # Cleanup temp files
+    # Cleanup temporary containers and files
+    print(f"\n[*] Cleaning up temporary containers: {container1} & {container2}...")
+    subprocess.run(f"docker rm {container1} {container2}", shell=True)
+
     for temp_file in [diff_file1, diff_file2, pkgs_file1, pkgs_file2, env_file1, env_file2, layers_file1, layers_file2]:
         os.remove(temp_file)
 
