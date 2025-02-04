@@ -1,133 +1,133 @@
 import subprocess
-import sys
 import json
-import tempfile
+import time
+import sys
 import os
-import uuid
 
-def run_command(command):
-    """Run a shell command and return its output or error."""
-    try:
-        return subprocess.check_output(command, shell=True, text=True).strip()
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.output.strip()}"
+# Path to the tool version config file
+TOOL_VERSION_CONFIG = 'tool_version_config.json'
+OUTPUT_FILE = 'output.json'  # Output file location inside the container
 
-def save_to_tempfile(content):
-    """Save content to a temporary file and return the filename."""
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    temp_file.write(content.encode())
-    temp_file.close()
-    return temp_file.name
+def run_docker_tests(image_name):
+    container_name = f"test-container-{int(time.time())}"
+    container_tmp_dir = "/tmp/test_tools"  # Working directory inside the container
+    host_test_scripts_dir = os.path.abspath("./test_tools")  # Default location of test scripts on the host
+    host_output_report = os.path.abspath("./test_report.json")  # Default location for the JSON report on the host
+    host_config_file = os.path.abspath("./tool_version_config.json")  # Path to the tool version config file on the host
+    host_get_tool_version_script = os.path.abspath("./get_tool_version.py")  # Path to the get_tool_version.py script
+    host_tool_version_output = os.path.abspath("./tool_versions.json")  # Path to store the tool version output file
 
-def compare_content(old_content, new_content, section_title):
-    """Compare two sets of content and return differences as a list."""
-    if not old_content.strip() and not new_content.strip():
-        return []
+    # Log to store any errors
+    error_log = []
 
-    old_lines = set(old_content.splitlines())
-    new_lines = set(new_content.splitlines())
-    diff = new_lines - old_lines
-
-    if diff:
-        return [f"### {section_title}\n"] + [f"- {line}" for line in diff]
-    return []
-
-def generate_report(report_sections):
-    """Generate a Markdown report with all detected differences."""
-    report_file = "docker_image_comparison_report.md"
-    with open(report_file, "w") as f:
-        f.write("# Docker Image Comparison Report\n\n")
-        f.write(f"**Old Image:** `{sys.argv[1]}`\n\n")
-        f.write(f"**New Image:** `{sys.argv[2]}`\n\n")
-
-        if any(report_sections):
-            for section in report_sections:
-                f.write("\n".join(section) + "\n\n")
-        else:
-            f.write("No significant differences found.\n")
-
-    print(f"\n✅ Report saved as `{report_file}`")
-
-def compare_docker_images(image1, image2):
-    """Compare two Docker images and generate a detailed report."""
-    print(f"[*] Pulling images {image1} and {image2} to ensure the latest versions...")
-    subprocess.run(f"docker pull {image1}", shell=True)
-    subprocess.run(f"docker pull {image2}", shell=True)
-
-    # Generate unique container names
-    container1, container2 = f"compare_{uuid.uuid4().hex[:8]}", f"compare_{uuid.uuid4().hex[:8]}"
+    def safe_subprocess_call(command, description):
+        try:
+            print(f"Running: {description}...")
+            subprocess.check_call(command)
+        except subprocess.CalledProcessError as e:
+            error_log.append(f"Error during {description}: {e}")
+            print(f"Error during {description}: {e}")
+            
+    check_cmd = ["docker", "images", "-q", image_name]
+    result = subprocess.run(check_cmd, capture_output=True, text=True)
     
-    print(f"\n[*] Creating temporary containers: {container1} & {container2}...")
-    subprocess.run(f"docker create --name {container1} {image1}", shell=True)
-    subprocess.run(f"docker create --name {container2} {image2}", shell=True)
+    if result.stdout.strip():
+        print(f"Image '{image_name}' already exists locally.")
+    else:
+        print(f"Image '{image_name} not found locally, Pulling from remote...")
+        safe_subprocess_call(["docker", "pull", image_name], "pull Docker image")
 
-    report_sections = []
+    # Start the container in detached mode
+    safe_subprocess_call(["docker", "run", "-d", "--user", "runner", "--name", container_name, image_name, "tail", "-f", "/dev/null"], "start Docker container")
 
-    # 1. Compare File System
-    print("\n[*] Comparing File System Changes...")
-    diff1 = run_command(f"docker diff {container1}")
-    diff2 = run_command(f"docker diff {container2}")
-    report_sections.append(compare_content(diff1, diff2, "File System Changes"))
+    # Prepare /tmp/test_tools directory inside the container
+    safe_subprocess_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir], "prepare /tmp/test_tools directory")
+    safe_subprocess_call(["docker", "exec", container_name, "chmod", "777", container_tmp_dir], "set permissions for /tmp/test_tools directory")
 
-    # 2. Compare Installed Packages
-    print("\n[*] Comparing Installed Packages...")
-    package_cmd_deb = "dpkg -l | awk '{print $2}' | sort"
-    package_cmd_rpm = "rpm -qa --qf '%{NAME}\n' | sort"
+    # Copy test scripts and tool_version_config.json to /tmp folder inside the container
+    safe_subprocess_call(["docker", "cp", host_test_scripts_dir, f"{container_name}:{container_tmp_dir}"], "copy test scripts")
+    safe_subprocess_call(["docker", "cp", host_config_file, f"{container_name}:{container_tmp_dir}/tool_version_config.json"], "copy tool_version_config.json")
+    safe_subprocess_call(["docker", "cp", host_get_tool_version_script, f"{container_name}:{container_tmp_dir}/get_tool_version.py"], "copy get_tool_version.py script")
 
-    package_cmd = package_cmd_deb if "debian" in image1.lower() or "ubuntu" in image1.lower() else package_cmd_rpm
+    # Verify the files inside the container by listing the contents of /tmp/test_tools
+    safe_subprocess_call(["docker", "exec", container_name, "ls", "-la", container_tmp_dir], "list contents of /tmp/test_tools")
 
-    pkgs1 = run_command(f"docker run --rm {image1} sh -c '{package_cmd}'")
-    pkgs2 = run_command(f"docker run --rm {image2} sh -c '{package_cmd}'")
-    report_sections.append(compare_content(pkgs1, pkgs2, "Installed Packages"))
+    # Run get_tool_version.py to fetch the tool versions
+    safe_subprocess_call(["docker", "exec", container_name, "python3", f"{container_tmp_dir}/get_tool_version.py"], "run get_tool_version.py")
 
-    # 3. Compare Environment Variables
-    print("\n[*] Comparing Environment Variables...")
-    env1 = run_command(f"docker run --rm {image1} env")
-    env2 = run_command(f"docker run --rm {image2} env")
-    report_sections.append(compare_content(env1, env2, "Environment Variables"))
+    # Copy the tool versions output file back to the host
+    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/tool_versions.json", host_tool_version_output], "copy tool versions output")
 
-    # 4. Compare Image Layers
-    print("\n[*] Comparing Image Layers...")
-    layers1 = run_command(f"docker history --no-trunc {image1}")
-    layers2 = run_command(f"docker history --no-trunc {image2}")
-    report_sections.append(compare_content(layers1, layers2, "Image Layers"))
+    # Create a virtual environment inside the container
+    safe_subprocess_call(["docker", "exec", container_name, "python3", "-m", "venv", f"{container_tmp_dir}/venv"], "create virtual environment")
 
-    # 5. Compare Metadata
-    print("\n[*] Comparing Image Metadata...")
-    metadata1 = json.loads(run_command(f"docker inspect {image1}"))[0]
-    metadata2 = json.loads(run_command(f"docker inspect {image2}"))[0]
-    metadata_diff = {key: metadata2[key] for key in metadata2 if metadata1.get(key) != metadata2.get(key)}
-    if metadata_diff:
-        report_sections.append(["### Image Metadata Differences"] + [f"- `{key}`: {metadata_diff[key]}" for key in metadata_diff])
+    # Install pytest and dependencies inside the virtual environment
+    safe_subprocess_call(["docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pip", "install", "pytest", "pytest-json-report"], "install pytest")
 
-    # 6. Compare Configurations
-    print("\n[*] Comparing Image Configurations...")
-    config1 = run_command(f"docker inspect -f '{{{{json .Config}}}}' {image1}")
-    config2 = run_command(f"docker inspect -f '{{{{json .Config}}}}' {image2}")
-    report_sections.append(compare_content(config1, config2, "Configuration Differences"))
+    # Run pytest inside the container with JSON report generation
+    safe_subprocess_call(["docker", "exec", container_name, f"{container_tmp_dir}/venv/bin/pytest", container_tmp_dir,
+                          "--json-report", "--json-report-file", f"{container_tmp_dir}/test_report.json"], "run pytest with JSON reporting")
 
-    # 7. Compare Exposed Ports & Networking
-    print("\n[*] Comparing Exposed Ports & Networking...")
-    network1 = run_command(f"docker inspect -f '{{{{json .NetworkSettings}}}}' {image1}")
-    network2 = run_command(f"docker inspect -f '{{{{json .NetworkSettings}}}}' {image2}")
-    report_sections.append(compare_content(network1, network2, "Exposed Ports & Networking"))
+    # Copy the JSON report back to the host
+    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/test_report.json", host_output_report], "copy JSON report to host")
 
-    # 8. Compare Volumes & Mount Points
-    print("\n[*] Comparing Volumes & Mount Points...")
-    volumes1 = run_command(f"docker inspect -f '{{{{json .Mounts}}}}' {image1}")
-    volumes2 = run_command(f"docker inspect -f '{{{{json .Mounts}}}}' {image2}")
-    report_sections.append(compare_content(volumes1, volumes2, "Volumes & Mount Points"))
+    print(f"Test completed. Report saved at {host_output_report}")
+    print(f"Tool versions saved at {host_tool_version_output}")
 
-    # Cleanup temporary containers
-    print(f"\n[*] Cleaning up temporary containers: {container1} & {container2}...")
-    subprocess.run(f"docker rm {container1} {container2}", shell=True)
+    # Log errors if any
+    if error_log:
+        print("Errors occurred during the execution:")
+        for log in error_log:
+            print(log)
 
-    # Generate final report
-    generate_report(report_sections)
+    # Stop and remove the container
+    safe_subprocess_call(["docker", "stop", container_name], "stop container")
+    safe_subprocess_call(["docker", "rm", container_name], "remove container")
 
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <old_image> <new_image>")
-        sys.exit(1)
+# Function to extract the version of a tool using the command from the config
+def get_version(tool, command):
+    try:
+        # Execute the command and capture the output
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        # Check if the command ran successfully
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            if version:
+                return f"{version}"
+            else:
+                return f"0.0.0"
+        else:
+            return f"{tool}: Error executing command"
+    except Exception as e:
+        return f"{tool}: {str(e)}"
 
-    compare_docker_images(sys.argv[1], sys.argv[2])
+# Function to load the tool version config and fetch versions for each tool
+def get_tool_versions():
+    tool_versions = {}
+    
+    try:
+        with open(TOOL_VERSION_CONFIG, 'r') as f:
+            tools_config = json.load(f)
+
+        # Loop through each tool in the config and fetch its version
+        for tool, details in tools_config.items():
+            command = details.get('command', '')
+            if command:
+                tool_versions[tool] = get_version(tool, command)
+            else:
+                tool_versions[tool] = f"{tool}: No command found in config"
+    
+    except FileNotFoundError:
+        print(f"Error: {TOOL_VERSION_CONFIG} file not found")
+    except json.JSONDecodeError:
+        print(f"Error: Failed to parse {TOOL_VERSION_CONFIG}, invalid JSON")
+    
+    # Write the results to a file
+    with open(OUTPUT_FILE, 'w') as outfile:
+        json.dump(tool_versions, outfile, indent=4)
+    
+    print(f"Tool versions saved to {OUTPUT_FILE}")
+
+if __name__ == '__main__':
+    get_tool_versions()
