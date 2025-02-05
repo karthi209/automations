@@ -7,6 +7,7 @@ import os
 # Constants
 TOOL_VERSION_CONFIG = '/tmp/test_tools/tool_version_config.json'
 OUTPUT_FILE = '/tmp/test_tools/tool_versions.json'
+IMAGE_STATS_FILE = '/tmp/test_tools/docker_image_stats.json'  # New file for Docker image stats
 
 def safe_subprocess_call(command, description):
     """Executes a subprocess command and logs errors if it fails."""
@@ -17,11 +18,34 @@ def safe_subprocess_call(command, description):
         print(f"Error during {description}: {e}")
         sys.exit(1)
 
+def get_docker_image_stats(image_name, output_file):
+    """Fetch and write Docker image stats such as size, virtual size, and tags to a file."""
+    check_cmd = ["docker", "images", image_name, "--format", "{{json .}}"]
+    result = subprocess.run(check_cmd, capture_output=True, text=True)
+    
+    if result.stdout.strip():
+        image_info = json.loads(result.stdout.strip())
+        image_stats = {
+            "Image ID": image_info['ID'],
+            "Tag": f"{image_info['Repository']}:{image_info['Tag']}",
+            "Size": f"{image_info['Size']} bytes",
+            "Virtual Size": f"{image_info['VirtualSize']} bytes"
+        }
+        # Write the stats to the specified output file
+        with open(output_file, 'w') as f:
+            json.dump(image_stats, f, indent=4)
+        print(f"Docker image stats saved to {output_file}")
+    else:
+        print(f"Image '{image_name}' not found locally.")
+
 def run_docker_tests(image_name):
     container_name = f"test-container-{int(time.time())}"
     container_tmp_dir = "/tmp/test_tools"
     host_config_file = os.path.abspath("./tool_version_config.json")
     host_tool_version_output = os.path.abspath("./tool_versions.json")
+
+    # Fetch image stats and save them to a file
+    get_docker_image_stats(image_name, IMAGE_STATS_FILE)
 
     # Check if the image exists locally, if not, pull it
     check_cmd = ["docker", "images", "-q", image_name]
@@ -48,7 +72,7 @@ def run_docker_tests(image_name):
     safe_subprocess_call(["docker", "exec", container_name, "ls", "-la", container_tmp_dir], "list contents of /tmp/test_tools")
 
     # Run tool version retrieval inside the container
-    safe_subprocess_call([
+    safe_subprocess_call([ 
         "docker", "exec", container_name, "python3", "-c", """
 import json, subprocess
 
