@@ -17,11 +17,31 @@ def safe_subprocess_call(command, description):
         print(f"Error during {description}: {e}")
         sys.exit(1)
 
+def inspect_docker_image(image_name):
+    """Inspects the Docker image for details like name, ID, and size."""
+    inspect_cmd = ["docker", "inspect", "--format", "{{json .}}", image_name]
+    result = subprocess.run(inspect_cmd, capture_output=True, text=True)
+    
+    if result.returncode == 0:
+        image_info = json.loads(result.stdout)
+        image_details = image_info[0]  # Since the result is an array with a single element
+        print(f"Image ID: {image_details['Id']}")
+        print(f"Image Name: {image_details['RepoTags'][0]}")
+        print(f"Image Size: {image_details['Size']} bytes")
+        print(f"Created: {image_details['Created']}")
+        return image_details
+    else:
+        print(f"Failed to inspect image: {image_name}")
+        sys.exit(1)
+
 def run_docker_tests(image_name):
     container_name = f"test-container-{int(time.time())}"
     container_tmp_dir = "/tmp/test_tools"
     host_config_file = os.path.abspath("./tool_version_config.json")
     host_tool_version_output = os.path.abspath("./tool_versions.json")
+
+    # Inspect the Docker image for its details (ID, size, etc.)
+    inspect_docker_image(image_name)
 
     # Check if the image exists locally, if not, pull it
     check_cmd = ["docker", "images", "-q", image_name]
