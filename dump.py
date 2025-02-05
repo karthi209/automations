@@ -7,6 +7,7 @@ import os
 # Constants
 TOOL_VERSION_CONFIG = '/tmp/test_tools/tool_version_config.json'
 OUTPUT_FILE = '/tmp/test_tools/tool_versions.json'
+DOCKER_METADATA_FILE = '/tmp/test_tools/docker_metadata.json'
 
 def safe_subprocess_call(command, description):
     """Executes a subprocess command and logs errors if it fails."""
@@ -34,6 +35,23 @@ def inspect_docker_image(image_name):
         print(f"Failed to inspect image: {image_name}")
         sys.exit(1)
 
+def get_docker_stats(container_name):
+    """Fetches the stats of the running container and saves them to a JSON file."""
+    stats_cmd = ["docker", "stats", "--no-stream", "--format", "{{json .}}", container_name]
+    result = subprocess.run(stats_cmd, capture_output=True, text=True)
+    
+    if result.returncode == 0:
+        container_stats = json.loads(result.stdout)  # Stats are output in JSON format
+        print(f"Docker stats for container {container_name}: {json.dumps(container_stats, indent=4)}")
+        
+        # Write stats to the docker_metadata file
+        with open(DOCKER_METADATA_FILE, 'w') as f:
+            json.dump(container_stats, f, indent=4)
+        print(f"Docker stats saved to {DOCKER_METADATA_FILE}")
+    else:
+        print(f"Failed to retrieve stats for container {container_name}")
+        sys.exit(1)
+
 def run_docker_tests(image_name):
     container_name = f"test-container-{int(time.time())}"
     container_tmp_dir = "/tmp/test_tools"
@@ -53,6 +71,9 @@ def run_docker_tests(image_name):
         
     # Start the container in detached mode
     safe_subprocess_call(["docker", "run", "-d", "--user", "runner", "--name", container_name, image_name, "tail", "-f", "/dev/null"], "start Docker container")
+
+    # Fetch Docker stats and save to file
+    get_docker_stats(container_name)
 
     # Ensure /tmp/test_tools directory exists inside the container
     safe_subprocess_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir], "prepare /tmp/test_tools directory")
