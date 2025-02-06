@@ -1,52 +1,42 @@
-def inspect_docker_image(image_name):
-    """Inspects the Docker image for details like name, ID, and size."""
-    metadata = {}
+import json
+import difflib
 
-    # Get image size and human-readable format
-    size_result = subprocess.run(["docker", "inspect", "--format", "{{.Size}}", image_name], capture_output=True, text=True)
-    image_size = int(size_result.stdout.strip())
-    metadata['size'] = human_readable_size(image_size)
+def read_json(file_path):
+    """Reads a JSON file and returns the parsed content."""
+    with open(file_path, 'r') as file:
+        return json.load(file)
 
-    # Get image ID
-    id_result = subprocess.run(["docker", "inspect", "--format", "{{.ID}}", image_name], capture_output=True, text=True)
-    metadata['id'] = id_result.stdout.strip()
+def compare_json(json1, json2):
+    """Compares two JSON objects and returns the differences in a list of strings."""
+    diff = difflib.unified_diff(
+        json.dumps(json1, indent=4).splitlines(),
+        json.dumps(json2, indent=4).splitlines(),
+        fromfile='old.json',
+        tofile='new.json',
+        lineterm=''
+    )
+    return '\n'.join(diff)
 
-    # Get image tags
-    tag_result = subprocess.run(["docker", "inspect", "--format", "{{.RepoTags}}", image_name], capture_output=True, text=True)
-    metadata['tags'] = tag_result.stdout.strip()
+def write_markdown(diff, output_file):
+    """Writes the differences into a markdown file."""
+    with open(output_file, 'w') as file:
+        file.write(f"## JSON File Comparison\n\n")
+        file.write("```diff\n")
+        file.write(diff)
+        file.write("\n```\n")
 
-    # Get creation date
-    creation_result = subprocess.run(["docker", "inspect", "--format", "{{.Created}}", image_name], capture_output=True, text=True)
-    metadata['created'] = creation_result.stdout.strip()
+def compare_json_files(file1, file2, output_file):
+    """Reads two JSON files, compares them, and outputs the difference to a markdown file."""
+    json1 = read_json(file1)
+    json2 = read_json(file2)
+    
+    diff = compare_json(json1, json2)
+    write_markdown(diff, output_file)
+    print(f"Markdown file with differences saved to {output_file}")
 
-    # Get architecture
-    arch_result = subprocess.run(["docker", "inspect", "--format", "{{.Architecture}}", image_name], capture_output=True, text=True)
-    metadata['architecture'] = arch_result.stdout.strip()
+# Example Usage
+file1 = 'path_to_first_json_file.json'
+file2 = 'path_to_second_json_file.json'
+output_file = 'comparison_output.md'
 
-    # Get environment variables
-    env_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Env}}", image_name], capture_output=True, text=True)
-    metadata['env_variables'] = env_result.stdout.strip()
-
-    # Get entrypoint and CMD
-    entrypoint_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Entrypoint}}", image_name], capture_output=True, text=True)
-    cmd_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Cmd}}", image_name], capture_output=True, text=True)
-    metadata['entrypoint'] = entrypoint_result.stdout.strip()
-    metadata['cmd'] = cmd_result.stdout.strip()
-
-    # Get exposed ports
-    exposed_ports_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.ExposedPorts}}", image_name], capture_output=True, text=True)
-    metadata['exposed_ports'] = exposed_ports_result.stdout.strip()
-
-    # Get volumes
-    volumes_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Volumes}}", image_name], capture_output=True, text=True)
-    metadata['volumes'] = volumes_result.stdout.strip()
-
-    # Get health check configuration
-    healthcheck_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Healthcheck}}", image_name], capture_output=True, text=True)
-    metadata['healthcheck'] = healthcheck_result.stdout.strip()
-
-    # Output metadata to a file
-    with open(DOCKER_METADATA_FILE, 'w') as outfile:
-        json.dump(metadata, outfile, indent=4)
-
-    print(f"Metadata saved at {DOCKER_METADATA_FILE}")
+compare_json_files(file1, file2, output_file)
