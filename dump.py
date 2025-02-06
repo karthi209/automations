@@ -1,108 +1,52 @@
-import subprocess
-import json
-import sys
-import time
-import os
-
-# Constants
-TOOL_VERSION_CONFIG = '/tmp/test_tools/tool_version_config.json'
-OUTPUT_FILE = '/tmp/test_tools/tool_versions.json'
-DOCKER_METADATA_FILE = '/tmp/test_tools/docker_metadata.json'
-
-def safe_subprocess_call(command, description):
-    """Executes a subprocess command and logs errors if it fails."""
-    try:
-        print(f"Running: {description}...")
-        subprocess.check_call(command)
-    except subprocess.CalledProcessError as e:
-        print(f"Error during {description}: {e}")
-        sys.exit(1)
-
 def inspect_docker_image(image_name):
     """Inspects the Docker image for details like name, ID, and size."""
+    metadata = {}
+
+    # Get image size and human-readable format
     size_result = subprocess.run(["docker", "inspect", "--format", "{{.Size}}", image_name], capture_output=True, text=True)
+    image_size = int(size_result.stdout.strip())
+    metadata['size'] = human_readable_size(image_size)
+
+    # Get image ID
     id_result = subprocess.run(["docker", "inspect", "--format", "{{.ID}}", image_name], capture_output=True, text=True)
+    metadata['id'] = id_result.stdout.strip()
+
+    # Get image tags
     tag_result = subprocess.run(["docker", "inspect", "--format", "{{.RepoTags}}", image_name], capture_output=True, text=True)
-    
-    print (size_result.stdout)
-    print (id_result.stdout)
-    print (tag_result.stdout)
+    metadata['tags'] = tag_result.stdout.strip()
 
-def run_docker_tests(image_name):
-    container_name = f"test-container-{int(time.time())}"
-    container_tmp_dir = "/tmp/test_tools"
-    host_config_file = os.path.abspath("./tool_version_config.json")
-    host_tool_version_output = os.path.abspath("./tool_versions.json")
+    # Get creation date
+    creation_result = subprocess.run(["docker", "inspect", "--format", "{{.Created}}", image_name], capture_output=True, text=True)
+    metadata['created'] = creation_result.stdout.strip()
 
-    # Check if the image exists locally, if not, pull it
-    check_cmd = ["docker", "images", "-q", image_name]
-    result = subprocess.run(check_cmd, capture_output=True, text=True)
-    
-    if not result.stdout.strip():
-        print(f"Image '{image_name}' not found locally, pulling from remote...")
-        safe_subprocess_call(["docker", "pull", image_name], "pull Docker image")
-        
-    # Inspect the Docker image for its details (ID, size, etc.)
-    inspect_docker_image(image_name)
-        
-    # Start the container in detached mode
-    safe_subprocess_call(["docker", "run", "-d", "--user", "runner", "--name", container_name, image_name, "tail", "-f", "/dev/null"], "start Docker container")
+    # Get architecture
+    arch_result = subprocess.run(["docker", "inspect", "--format", "{{.Architecture}}", image_name], capture_output=True, text=True)
+    metadata['architecture'] = arch_result.stdout.strip()
 
-    # Ensure /tmp/test_tools directory exists inside the container
-    safe_subprocess_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir], "prepare /tmp/test_tools directory")
-    safe_subprocess_call(["docker", "exec", container_name, "chmod", "777", container_tmp_dir], "set permissions for /tmp/test_tools directory")
+    # Get environment variables
+    env_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Env}}", image_name], capture_output=True, text=True)
+    metadata['env_variables'] = env_result.stdout.strip()
 
-    # Copy test scripts and tool_version_config.json to /tmp folder inside the container
-    safe_subprocess_call(["docker", "cp", host_config_file, f"{container_name}:{container_tmp_dir}/tool_version_config.json"], "copy tool_version_config.json")
+    # Get entrypoint and CMD
+    entrypoint_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Entrypoint}}", image_name], capture_output=True, text=True)
+    cmd_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Cmd}}", image_name], capture_output=True, text=True)
+    metadata['entrypoint'] = entrypoint_result.stdout.strip()
+    metadata['cmd'] = cmd_result.stdout.strip()
 
-    # Verify the copied files
-    safe_subprocess_call(["docker", "exec", container_name, "ls", "-la", container_tmp_dir], "list contents of /tmp/test_tools")
+    # Get exposed ports
+    exposed_ports_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.ExposedPorts}}", image_name], capture_output=True, text=True)
+    metadata['exposed_ports'] = exposed_ports_result.stdout.strip()
 
-    # Run tool version retrieval inside the container
-    safe_subprocess_call([ 
-        "docker", "exec", container_name, "python3", "-c", """
-import json, subprocess
+    # Get volumes
+    volumes_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Volumes}}", image_name], capture_output=True, text=True)
+    metadata['volumes'] = volumes_result.stdout.strip()
 
-TOOL_VERSION_CONFIG = '/tmp/test_tools/tool_version_config.json'
-OUTPUT_FILE = '/tmp/test_tools/tool_versions.json'
+    # Get health check configuration
+    healthcheck_result = subprocess.run(["docker", "inspect", "--format", "{{.Config.Healthcheck}}", image_name], capture_output=True, text=True)
+    metadata['healthcheck'] = healthcheck_result.stdout.strip()
 
-def get_version(tool, command):
-    try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        return result.stdout.strip() if result.returncode == 0 else "0.0.0"
-    except Exception as e:
-        return str(e)
+    # Output metadata to a file
+    with open(DOCKER_METADATA_FILE, 'w') as outfile:
+        json.dump(metadata, outfile, indent=4)
 
-def get_tool_versions():
-    tool_versions = {}
-    try:
-        with open(TOOL_VERSION_CONFIG, 'r') as f:
-            tools_config = json.load(f)
-        for tool, details in tools_config.items():
-            command = details.get('command', '')
-            tool_versions[tool] = get_version(tool, command) if command else "No command found"
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    with open(OUTPUT_FILE, 'w') as outfile:
-        json.dump(tool_versions, outfile, indent=4)
-
-get_tool_versions()
-"""
-    ], "execute tool version retrieval inside container")
-
-    # Copy the tool versions output file back to the host
-    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/tool_versions.json", host_tool_version_output], "copy tool versions output")
-
-    print(f"Tool versions saved at {host_tool_version_output}")
-
-    # Stop and remove the container
-    safe_subprocess_call(["docker", "stop", container_name], "stop container")
-    safe_subprocess_call(["docker", "rm", container_name], "remove container")
-
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python test_manager.py <docker_image_name>")
-        sys.exit(1)
-
-    docker_image_name = sys.argv[1]
-    run_docker_tests(docker_image_name)
+    print(f"Metadata saved at {DOCKER_METADATA_FILE}")
