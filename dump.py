@@ -1,46 +1,81 @@
-import json
+name: "Unit test tools"
+description: "Runs molecule test on all tools and generates a github summary with results of the test"
+inputs:
+  ANSIBLE_VAULT_PASSWORD:
+    description: "Ansible vault password"
+    required: true
 
-def read_json(file_path):
-    """Reads a JSON file and returns the parsed content."""
-    with open(file_path, 'r') as file:
-        return json.load(file)
-
-def compare_json(json1, json2):
-    """Compares two JSON objects and returns the differences in a human-readable format."""
-    diff = []
-    
-    # Compare all keys in both JSON objects
-    all_keys = set(json1.keys()).union(set(json2.keys()))
-    
-    for key in all_keys:
-        value1 = json1.get(key, None)
-        value2 = json2.get(key, None)
+runs:
+  using: "composite"
+  steps:
+    - name: Setup github authentication
+        run: |
+            git config --global credential.helper store
+            git config --global url."https://github.org/".insteadOf git@github.org:
+            echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.org" > ~/.git-credentials
+            
+      - name: Checkout code
+        run: git clone https://github.org/devsecops/${{ matrix.repo }}.git
+              
+      - name: Copy Selinux dependencies
+        run: |
+          sudo cp -r /usr/lib64/python3.6/site-packages/selinux /usr/lib64/python3.11/site-packages/selinux
+          sudo cp /usr/lib64/python3.6/site-packages/selinux-2.9-py3.6.egg-info /usr/lib64/python3.11/site-packages/selinux-2.9-py3.6.egg-info
         
-        if value1 != value2:
-            diff.append(f"{key}: {value1} >> {value2}")
-    
-    return diff
+      - name: Setup Python virtual environment
+        run: |
+          python -m venv venv
+        shell: bash
+        
+      - name: Authenticating with github
+        run: |
+          git config --global credential.helper store
+          echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.org" > ~/.git-credentials
+          
+      - name: Set vault password
+        run: |
+          mkdir -p /apps/runner/.user_setup/
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /apps/runner/.user_setup/vault_password
+          chmod 600 /apps/runner/.user_setup/vault_password
 
-def write_markdown(diff, output_file):
-    """Writes the differences into a markdown file."""
-    with open(output_file, 'w') as file:
-        file.write(f"## JSON File Comparison\n\n")
-        for line in diff:
-            file.write(f"{line}\n")
-    
-    print(f"Markdown file with differences saved to {output_file}")
-
-def compare_json_files(file1, file2, output_file):
-    """Reads two JSON files, compares them, and outputs the difference to a markdown file."""
-    json1 = read_json(file1)
-    json2 = read_json(file2)
-    
-    diff = compare_json(json1, json2)
-    write_markdown(diff, output_file)
-
-# Example Usage
-file1 = 'path_to_first_json_file.json'
-file2 = 'path_to_second_json_file.json'
-output_file = 'comparison_output.md'
-
-compare_json_files(file1, file2, output_file)
+      - name: Install required pip modules
+        run: |
+          source venv/bin/activate
+          cd ${{ matrix.repo }}
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        shell: bash
+        
+      - name: Verify molecule installation
+        run: |
+          source venv/bin/activate
+          molecule --version
+        shell: bash
+          
+      - name: Run molecule tests
+        run: |
+          source venv/bin/activate
+          cd ${{ matrix.repo }}
+          molecule test | tee molecule-test-${{ matrix.repo }}.txt
+        env:
+          PY_COLORS: '1'
+          ANSIBLE_FORCE_COLOR: '1'
+          GIT_ASKPASS: /usr/bin/true
+          GIT_TERMINAL_PROMPT: 0
+          
+      - name: Archive verify test results
+        if: always()
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/upload-artifact@v1
+        with:
+          name: unit-test-results
+          path: ./${{ matrix.repo }}/molecule-test-${{ matrix.repo }}.txt
+          retention-days: 7
+          
+      - name: Clean up
+        run: |
+          ls -la
+          rm -rf ${{ matrix.repo }}
+          rm -rf venv
+          rm -rf /apps/runner/.user_setup/vault_password
+          rm -rf ~/.git-credentials
+          ls -la
