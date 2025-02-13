@@ -1,20 +1,44 @@
-- name: Check Pytest Test Report for Failures
-        run: |
-          TEST_REPORT="./test-results/test_report.json"
+name: "Create integration testing github summary"
+description: "Takes the integration pytest report as input in json format and generates a github summary"
+inputs:
+  GITHUB_TOKEN:
+    description: "Token for auth"
+    required: true
 
-          # Validate if the JSON file exists
-          if [[ ! -f "$TEST_REPORT" ]]; then
-            echo "❌ Test report not found! Failing the job."
-            exit 1
-          fi
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: github-marketplace-actions/.github/actions/actions/checkout@v1
+      
+    - name: Download all reports
+      uses: github-marketplace-actions/.github/actions/actions/download-artifact@v1
+      with:
+        name: integration-test-results
+        path: test_scripts/
+        
+    - name: Generate Test Report
+      run: |
+        cd test_scripts
+        python3 test_summary.py
+      shell: bash
 
-          # Check if any tests failed using jq
-          FAILED_TESTS=$(jq '.summary.failed' "$TEST_REPORT")
-          EXIT_CODE=$(jq '.exitcode' "$TEST_REPORT")
+    - name: Add report to github summary
+      run: |
+        cat $GITHUB_WORKSPACE/test_scripts/test_results.md >> $GITHUB_STEP_SUMMARY
+      shell: bash
 
-          if [[ "$EXIT_CODE" -ne 0 ]] || [[ "$FAILED_TESTS" -gt 0 ]]; then
-            echo "❌ Tests failed! $FAILED_TESTS tests failed."
-            exit 1
-          else
-            echo "✅ All tests passed!"
-          fi
+    - name: Push report to wiki
+      env:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        TAG: ${{ env.TAG }}
+      run: |
+        git clone https://x-access-token:${{ inputs.GITHUB_TOKEN }}@github.org/${{ github.repository }}.wiki.git wiki
+        mv $GITHUB_WORKSPACE/test_scripts/test_results.md wiki/integration_test_results_v$TAG.md
+        cd wiki
+        git config user.name "${{ github.actor }}"
+        git config user.email "${{ github.actor }}"@users.noreply.github.org
+        git add .
+        git commit -m "integration test report for v$TAG"
+        git push
+      shell: bash
