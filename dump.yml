@@ -1,30 +1,35 @@
 name: test-run
-
 on:
   workflow_dispatch:
     inputs:
       UNIT_TEST:
-        description: "RUN UNIT TEST"
+        description: "Run unit tests"
         required: true
-        default: "true"
+        default: true
         type: boolean
       INTEGRATION_TEST:
-        description: "RUN INTEGRATION TEST"
+        description: "Run integration tests"
         required: true
-        default: "true"
+        default: true
         type: boolean
       INTEGRATION_TEST_EXISTING_IMAGE:
-        description: "RUN INTEGRATION TEST (EXISTING IMAGE)"
+        description: "Run integration tests on existing image"
         required: true
-        default: "false"
+        default: false
         type: boolean
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - develop
 
 jobs:
   unit-test:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.UNIT_TEST == 'true' }}
+    if: ${{ github.event_name == 'pull_request' || inputs.UNIT_TEST }}
     runs-on: self-hosted
     continue-on-error: true
     steps:
+      - uses: actions/checkout@v4
       - name: Run unit tests
         run: |
           echo "Running unit tests..."
@@ -33,39 +38,41 @@ jobs:
   unit-test-dashboard:
     runs-on: self-hosted
     needs: unit-test
-    if: ${{ needs.unit-test.result != 'skipped' }}
+    if: ${{ always() && needs.unit-test.result != 'skipped' }}
     steps:
       - name: Generate unit test dashboard
         run: echo "Generating unit test dashboard..."
 
   integration-test:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.INTEGRATION_TEST == 'true' }}
+    if: ${{ github.event_name == 'pull_request' || inputs.INTEGRATION_TEST }}
     runs-on: self-hosted
     continue-on-error: true
     steps:
+      - uses: actions/checkout@v4
       - name: Run integration tests
         run: echo "Running integration tests..."
 
   integration-test-dashboard:
     runs-on: self-hosted
     needs: integration-test
-    if: ${{ needs.integration-test.result != 'skipped' }}
+    if: ${{ always() && needs.integration-test.result != 'skipped' }}
     steps:
       - name: Generate integration test dashboard
         run: echo "Generating integration test dashboard..."
 
   integration-test-existing-image:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
+    if: ${{ inputs.INTEGRATION_TEST_EXISTING_IMAGE }}
     runs-on: self-hosted
     continue-on-error: true
     steps:
+      - uses: actions/checkout@v4
       - name: Run integration tests on existing image
         run: echo "Running integration tests on existing image..."
 
   integration-test-existing-image-dashboard:
     runs-on: self-hosted
     needs: integration-test-existing-image
-    if: ${{ needs.integration-test-existing-image.result != 'skipped' }}
+    if: ${{ always() && needs.integration-test-existing-image.result != 'skipped' }}
     steps:
       - name: Generate integration test dashboard for existing image
         run: echo "Generating integration test dashboard for existing image..."
