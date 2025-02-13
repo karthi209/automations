@@ -16,13 +16,13 @@ on:
       INTEGRATION_TEST_EXISTING_IMAGE:
         description: "RUN INTEGRATION TEST (EXISTING IMAGE)"
         required: true
-        default: "true"
+        default: "false"
         type: boolean
 
 jobs:
   unit-test:
-    if: ${{ inputs.UNIT_TEST == 'true' }}
-    runs-on: self-hosted
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.UNIT_TEST == 'true') }}
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - name: Run unit tests
@@ -31,41 +31,41 @@ jobs:
           exit 1  # Simulating failure
 
   unit-test-dashboard:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: unit-test
-    if: always() && ${{ inputs.UNIT_TEST == 'true' }}
+    if: ${{ always() && needs.unit-test.result != 'skipped' && inputs.UNIT_TEST == 'true' }}
     steps:
       - name: Generate unit test dashboard
         run: echo "Generating unit test dashboard..."
 
   integration-test:
-    if: ${{ inputs.INTEGRATION_TEST == 'true' }}
-    runs-on: self-hosted
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.INTEGRATION_TEST == 'true') }}
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - name: Run integration tests
         run: echo "Running integration tests..."
 
   integration-test-dashboard:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: integration-test
-    if: always() && ${{ inputs.INTEGRATION_TEST == 'true' }}
+    if: ${{ always() && needs.integration-test.result != 'skipped' && inputs.INTEGRATION_TEST == 'true' }}
     steps:
       - name: Generate integration test dashboard
         run: echo "Generating integration test dashboard..."
 
   integration-test-existing-image:
-    runs-on: self-hosted
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
+    runs-on: ubuntu-latest
     continue-on-error: true
-    if: ${{ inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
     steps:
       - name: Run integration tests on existing image
         run: echo "Running integration tests on existing image..."
 
   integration-test-existing-image-dashboard:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: integration-test-existing-image
-    if: always() && ${{ inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
+    if: ${{ always() && needs.integration-test-existing-image.result != 'skipped' && inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
     steps:
       - name: Generate integration test dashboard for existing image
         run: echo "Generating integration test dashboard for existing image..."
