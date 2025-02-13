@@ -60,13 +60,22 @@ def save_markdown(content, filename="test_results.md"):
 
 # Example usage
 if __name__ == "__main__":
-    # Read the input file
-    with open('test_report_*.json', 'r') as f:
-        json_data = f.read()
+    import sys
     
-    # Process and generate markdown
-    markdown_content = process_test_results(json_data)
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <test_report.json>")
+        sys.exit(1)
+
+    filename = sys.argv[1]  # Take file name as input
+
+    try:
+        with open(filename, 'r') as f:
+            json_data = f.read()
+        
+        markdown_content = process_test_results(json_data)
+        save_markdown(markdown_content)
+
+        print(f"Markdown file generated successfully from {filename}!")
     
-    # Save to file
-    save_markdown(markdown_content)
-    print("Markdown file with failure details generated successfully!")
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' not found.")
