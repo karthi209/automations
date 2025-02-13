@@ -1,6 +1,187 @@
-Team: test-team-1
-Job Name: test-job-1
-Build Number: 65
-Build URL:
-Status:  :white_check_mark: SUCCESS
----
+name: run-tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      UNIT_TEST:
+        description: "RUN UNIT TEST"
+        required: true
+        default: "true"
+        type: boolean
+      INTEGRATION_TEST:
+        description: "RUN INTEGRATION TEST (Builds new image and runs the test)"
+        required: true
+        default: "true"
+        type: boolean
+      INTEGRATION_TEST_EXISTING_IMAGE:
+        description: "RUN INTEGRATION TEST (Runs the test using existing image provided in OPTION 4)"
+        required: true
+        default: "false"
+        type: boolean
+      IMAGE_NAME:
+        description: "IMAGE_NAME (Existing image name to run tests if OPTION 3 is selcted)"
+        required: false
+        type: string
+    secrets:
+      ANSIBLE_VAULT_PASSWORD:
+        required: true
+  pull_request:
+    branches:
+      - production
+
+jobs:
+  unit-test:
+    if: github.event_name == 'pull_request' ||  ${{ inputs.UNIT_TEST == 'true' }}
+    runs-on: [ self-hosted ]
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+        # tools
+          - 'git'
+          - 'nodejs'
+          - 'ansible_client'
+          - 'ant'
+          - 'azure'
+          - 'chrome'
+          - 'clover'
+          - 'cosign'
+          - 'docker'
+          - 'dotnet'
+          - 'gnupg'
+          - 'golang'
+          - 'helm'
+          - 'ibmcloud'
+          - 'kubectl'
+          - 'liquibase'
+          - 'maven'
+          - 'opa'
+          - 'openshift'
+          - 'oracle_instantclient'
+          - 'rsync'
+          - 'skopeo'
+          - 'sonar_qube_runner'
+          - 'tidelift'
+          - 'terraform'
+          - 'sqlcmd'
+          - 'graalvm'
+          - 'psql'
+          - 'checkmarx'
+          - 'Jproxy'
+          - 'selenium'
+          - 'rtc_build_toolkit'
+          - 'github_cli'
+          - 'jfrogcli'
+          - 'databricks'
+          - 'twistcli'
+          - 'xlsxwriter'
+          - 'powershell'
+          - 'sonatype'
+          - 'gradle'
+          - 'groovy'
+          - 'grunt'
+          - 'kubeseal'
+          - 'kubeval'
+          - 'kubelogin'
+          - 'gettext'
+          - 'buildah'
+          - 'mercurial'
+        # base tools
+          - 'java'
+          - 'python'
+          - 'curl'
+          - 'jmeter'
+          - 'jq'
+          - 'sshpass'
+          - 'unzip'
+          - 'wget'
+          - 'yq'
+          - 'cacerts'
+      
+    steps:
+      - name: Checkout code
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+        with:
+          clean: true
+
+      - name: Run custom unit test tools action
+        uses: ./.github/actions/unit-test
+        with: 
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+          repo: ${{ matrix.repo }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  unit-test-dashboard:
+    runs-on: [ self-hosted ]
+    needs: unit-test
+    if: ${{ inputs.UNIT_TEST == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+
+      - name: Create github summary dashboard
+        uses: ./.github/actions/unit-test-dashboard
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+  integration-test:
+    if: github.event_name == 'pull_request' || ${{ inputs.INTEGRATION_TEST == 'true' }}
+    runs-on: [ self-hosted ]
+    strategy:
+      matrix:
+        AGENT_TYPE: [jenkins, scale-set-runner]
+        AGENT_TEAM: [bluemix]
+
+    steps:
+      - name: Checkout code
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+
+      - name: Build tools image and run integration tests
+        uses: ./.github/actions/integration-test
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AGENT_TYPE: ${{ matrix.AGENT_TYPE }}
+          AGENT_TEAM: ${{ matrix.AGENT_TEAM }}
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+
+  integration-test-dashboard:
+    runs-on: [ self-hosted ]
+    needs: integration-test
+    if: ${{ inputs.INTEGRATION_TEST == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+
+      - name: Create github summary dashboard
+        uses: ./.github/actions/integration-test-dashboard
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  integration-test-existing-image:
+    runs-on: [ self-hosted ]
+    if: ${{ inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+
+      - name: Create github summary dashboard
+        uses: ./.github/actions/integration-test-existing-image
+        with:
+          IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+
+  integration-test-existing-image-dashboard:
+    runs-on: [ self-hosted ]
+    needs: integration-test-existing-image
+    if: ${{ inputs.INTEGRATION_TEST_EXISTING_IMAGE == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+
+      - name: Create github summary dashboard
+        uses: ./.github/actions/integration-test-dashboard
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
