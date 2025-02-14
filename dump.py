@@ -30,7 +30,7 @@ def process_test_results(json_data):
             })
     
     # Generate markdown content
-    markdown_content = "## Summary - Integration Tests\n\n"
+    markdown_content = "\n## Summary - Integration Tests\n\n"
     markdown_content += f"_Last updated: {current_time}_\n\n"
     markdown_content += "| Tool | Tests Passed | Final Health |\n"
     markdown_content += "|------|--------------|---------------|\n"
@@ -54,8 +54,8 @@ def process_test_results(json_data):
     
     return markdown_content
 
-def save_markdown(content, filename="test_results.md"):
-    with open(filename, 'w') as f:
+def append_markdown(content, filename="test_results.md"):
+    with open(filename, 'a') as f:
         f.write(content)
 
 # Example usage
@@ -73,9 +73,9 @@ if __name__ == "__main__":
             json_data = f.read()
         
         markdown_content = process_test_results(json_data)
-        save_markdown(markdown_content)
+        append_markdown(markdown_content)
 
-        print(f"Markdown file generated successfully from {filename}!")
+        print(f"Markdown file updated successfully with results from {filename}!")
     
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
