@@ -23,14 +23,17 @@ def process_test_results(json_data):
             results[tool]['passed'] += 1
         else:
             # Add failure details
+            failure_message = test.get('call', {}).get('longrepr', 'No detailed message available')
+            short_message = '\n'.join(failure_message.splitlines()[:5])
             failures.append({
                 'tool': tool,
                 'test_name': test['nodeid'],
-                'message': test.get('call', {}).get('longrepr', 'No detailed message available')
+                'message': short_message
             })
     
     # Generate markdown content
     markdown_content = "\n## Summary - Integration Tests\n\n"
+    markdown_content += f"\n*Report for {filename}*\n\n"
     markdown_content += f"_Last updated: {current_time}_\n\n"
     markdown_content += "| Tool | Tests Passed | Final Health |\n"
     markdown_content += "|------|--------------|---------------|\n"
@@ -44,9 +47,9 @@ def process_test_results(json_data):
     
     # Add failure details, if any
     if failures:
-        markdown_content += "\n## Failure Details\n\n"
+        markdown_content += "\n### Failure Details\n\n"
         for failure in failures:
-            markdown_content += f"### Test Case: {failure['tool']}\n"
+            markdown_content += f"#### Test Case: {failure['tool']}\n"
             markdown_content += f"**Test Name:** {failure['test_name']}\n"
             markdown_content += "```plaintext\n"
             markdown_content += f"{failure['message']}\n"
