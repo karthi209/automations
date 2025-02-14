@@ -44,6 +44,32 @@ def generate_tool_chart(results):
     chart.append("```")
     return "\n".join(chart)
 
+def format_failure_details(failures):
+    """Format failure details as a collapsible section."""
+    if not failures:
+        return ""
+    
+    # Count total failures
+    total_failures = len(failures)
+    
+    # Create collapsible section
+    details = [f"\n### Failure Details ({total_failures} failures)\n"]
+    details.append("<details>")
+    details.append("<summary>Click to expand failure details</summary>\n")
+    
+    # Add each failure
+    for failure in failures:
+        details.extend([
+            f"#### Test Case: {failure['tool']}",
+            f"**Test Name:** {failure['test_name']}",
+            "```plaintext",
+            f"{failure['message']}",
+            "```\n"
+        ])
+    
+    details.append("</details>")
+    return "\n".join(details)
+
 def process_test_results(json_data):
     # Parse the JSON data
     data = json.loads(json_data)
@@ -96,15 +122,8 @@ def process_test_results(json_data):
         health = "✅ HEALTHY" if counts['passed'] == counts['total'] else "❌ UNHEALTHY"
         markdown_content += f"| {tool} | {passed_fraction} | {health} |\n"
     
-    # Add failure details, if any
-    if failures:
-        markdown_content += "\n### Failure Details\n\n"
-        for failure in failures:
-            markdown_content += f"#### Test Case: {failure['tool']}\n"
-            markdown_content += f"**Test Name:** {failure['test_name']}\n"
-            markdown_content += "```plaintext\n"
-            markdown_content += f"{failure['message']}\n"
-            markdown_content += "```\n\n"
+    # Add collapsible failure details
+    markdown_content += format_failure_details(failures)
     
     return markdown_content
 
