@@ -1,78 +1,75 @@
-name: test-run
-on:
-  workflow_dispatch:
-    inputs:
-      UNIT_TEST:
-        description: "Run unit tests"
-        required: true
-        default: true
-        type: boolean
-      INTEGRATION_TEST:
-        description: "Run integration tests"
-        required: true
-        default: true
-        type: boolean
-      INTEGRATION_TEST_EXISTING_IMAGE:
-        description: "Run integration tests on existing image"
-        required: true
-        default: false
-        type: boolean
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - main
-      - develop
+# Running Tests for Agent Build
 
-jobs:
-  unit-test:
-    if: ${{ github.event_name == 'pull_request' || inputs.UNIT_TEST }}
-    runs-on: self-hosted
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run unit tests
-        run: |
-          echo "Running unit tests..."
-          exit 1  # Simulating failure
+The `run-tests` workflow is an integrated workflow designed to handle testing. This workflow is automatically triggered when a pull request is created to merge into the `production` branch.
 
-  unit-test-dashboard:
-    runs-on: self-hosted
-    needs: unit-test
-    if: ${{ always() && needs.unit-test.result != 'skipped' }}
-    steps:
-      - name: Generate unit test dashboard
-        run: echo "Generating unit test dashboard..."
+Additionally, the workflow can be triggered manually by clicking on the `Run workflow` option in the Actions tab. When triggered manually, the workflow provides a few options to select from.
 
-  integration-test:
-    if: ${{ github.event_name == 'pull_request' || inputs.INTEGRATION_TEST }}
-    runs-on: self-hosted
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run integration tests
-        run: echo "Running integration tests..."
+## How the Workflow Works
 
-  integration-test-dashboard:
-    runs-on: self-hosted
-    needs: integration-test
-    if: ${{ always() && needs.integration-test.result != 'skipped' }}
-    steps:
-      - name: Generate integration test dashboard
-        run: echo "Generating integration test dashboard..."
+The `run-tests` workflow consists of multiple actions performing different roles:
 
-  integration-test-existing-image:
-    if: ${{ inputs.INTEGRATION_TEST_EXISTING_IMAGE }}
-    runs-on: self-hosted
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run integration tests on existing image
-        run: echo "Running integration tests on existing image..."
+- **Unit Test Action:** Runs Molecule tests.
+- **Unit Test Dashboard Action:** Generates the test dashboard.
+- **Integration Test Action:** Builds and runs pytest tests.
+- **Integration Test Existing Image Action:** Runs pytest tests on an existing image.
+- **Integration Test Dashboard Action:** Generates the summary report.
 
-  integration-test-existing-image-dashboard:
-    runs-on: self-hosted
-    needs: integration-test-existing-image
-    if: ${{ always() && needs.integration-test-existing-image.result != 'skipped' }}
-    steps:
-      - name: Generate integration test dashboard for existing image
-        run: echo "Generating integration test dashboard for existing image..."
+### **Details of Individual Actions**
+
+#### **Unit Test Action**
+The unit test action installs dependencies and iterates through all the tools listed, running Molecule tests.
+
+#### **Unit Test Dashboard Action**
+This action uses the `generate_dashboard.sh` script to generate the dashboard. The script is located at:
+
+test_scripts/generate_dashboard.sh
+
+#### **Integration Test Action**
+The integration test action utilizes the `test_manager.py` script to execute the tests. This script is located at:
+
+test_scripts/test_manager.py
+
+The `test_manager.py` script is responsible for:
+- Spinning up a Docker container using the agent/runner image.
+- Copying the pytest script from the `test_scripts/test_tools/` folder into the container.
+- Running the pytest script inside the container.
+- Generating a `test_report.json` file.
+
+Before running the tests, this action also builds the required image using the playbook:
+
+playbook/local_build.yml
+
+This is used to build the `agent` and `scale-set-runner-bluemix` images.
+
+#### **Integration Test Existing Image Action**
+This action executes the `test_manager.py` script without building the image, as it is meant for an existing image.
+
+#### **Integration Test Dashboard Action**
+The integration test dashboard action uses the `test_summary.py` script to generate a Markdown-formatted summary.
+
+## Options
+
+### **RUN UNIT TEST**
+When this option is selected, the workflow executes Molecule tests on all collections used by `agent_build`, generates a report, and presents it in the GitHub Actions (GHA) job summary.
+
+### **RUN INTEGRATION TEST (Builds new image and runs the test)**
+When this option is selected, the workflow builds the test image (e.g., `jenkins-bluemix` and `scale-set-runner-bluemix`), executes the pytest scripts inside the container, and generates a report, which is presented in the GHA job summary.
+
+### **RUN INTEGRATION TEST (Runs the test using an existing image provided in OPTION 4)**
+This option runs integration tests on an already built image. The workflow pulls the image provided in the `OPTION 4` field, spins up a container, runs the test cases inside the container, and generates a report, which is presented in the GHA job summary.
+
+### **IMAGE_NAME (Required only if OPTION 3 is selected)**
+If `OPTION 3` is selected, this field is mandatory. Provide the image name in the format:
+- `scale-set-runner-foft-all-tools:2.2.68`
+- `jenkins-foft-all-tools:2.2`
+
+The `pull request` trigger runs `OPTION 1` and `OPTION 2` by default. Even for manual triggers, `OPTION 3` and `OPTION 2` are selected by default, but you can modify the options before triggering the workflow.
+
+## What Do Unit Tests and Integration Tests Mean in the Agent Build Context?
+
+### **Unit Test**
+A unit test is executed by running Molecule tests on individual tool collections. We spin up an agent image, install only a specific collection, and verify that the tool is installed correctly and behaves as expected in an isolated environment.
+
+### **Integration Test**
+An integration test is executed on a container that is spun up using the `final` agent build image. The image used for integration tests is the same exact image that will be released for Jenkins and other agent runner images. This test helps identify dependency issues or conflicts between different collections during the integration testing phase.
+
