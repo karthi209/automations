@@ -1,8 +1,16 @@
     - name: Get tag if running for existing image
       if: ${{ inputs.IMAGE_NAME != '' }}
       run: |
-        VERSION = "${{ inputs.IMAGE_NAME }}"
-        NEXT_TAG = "${VERSION#*:}"
+        VERSION="${{ inputs.IMAGE_NAME }}"
+
+        # Extract tag if it exists, otherwise use "latest"
+        if [[ "$VERSION" == *":"* ]]; then
+          NEXT_TAG="${VERSION#*:}"
+        else
+          NEXT_TAG="latest"
+        fi
+
+        # Export to GitHub environment
         echo "NEXT_TAG=$NEXT_TAG" >> $GITHUB_ENV
         echo "Next version: $NEXT_TAG"
       shell: bash
