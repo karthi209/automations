@@ -1,15 +1,8 @@
-    - name: Run Test Script
-      env:
-        TAG: ${{ inputs.IMAGE_NAME }}
+    - name: Get tag if running for existing image
+      if: ${{ inputs.IMAGE_NAME != '' }}
       run: |
-        cd test_scripts
-        python3 test_manager.py docker-dev-local.org/agents/${{ inputs.IMAGE_NAME }}
-        IMG_NAME=$(echo "${{ inputs.IMAGE_NAME }}" | sed 's/[.:/-]/_/g')
-        echo "IMG_NAME=$IMG_NAME" >> "$GITHUB_ENV"
-        echo "IMG_NAME=$IMG_NAME" >> "$GITHUB_OUTPUT"
-        RPT_NAME="test_report_docker_dev_local_devopsrepo_kp_org_agents_${{ env.IMG_NAME }}.json"
-        
-        # Export to env & output
-        echo "RPT_NAME=$RPT_NAME" >> "$GITHUB_ENV"
-        echo "RPT_NAME=$RPT_NAME" >> "$GITHUB_OUTPUT"
+        VERSION = "${{ inputs.IMAGE_NAME }}"
+        NEXT_TAG = "${VERSION#*:}"
+        echo "NEXT_TAG=$NEXT_TAG" >> $GITHUB_ENV
+        echo "Next version: $NEXT_TAG"
       shell: bash
