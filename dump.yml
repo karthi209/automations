@@ -1,16 +1,69 @@
-    - name: Get tag if running for existing image
-      if: ${{ inputs.IMAGE_NAME != '' }}
-      run: |
-        VERSION="${{ inputs.IMAGE_NAME }}"
+roles/nginx_setup/tasks/main.yml
 
-        # Extract tag if it exists, otherwise use "latest"
-        if [[ "$VERSION" == *":"* ]]; then
-          NEXT_TAG="${VERSION#*:}"
-        else
-          NEXT_TAG="latest"
-        fi
+- name: Install Nginx
+  yum:
+    name: nginx
+    state: present
 
-        # Export to GitHub environment
-        echo "NEXT_TAG=$NEXT_TAG" >> $GITHUB_ENV
-        echo "Next version: $NEXT_TAG"
-      shell: bash
+- name: Start and enable Nginx service
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
+- name: Copy custom index.html
+  copy:
+    src: files/index.html
+    dest: /usr/share/nginx/html/index.html
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy Nginx configuration
+  template:
+    src: templates/nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Nginx
+
+
+roles/nginx_setup/handlers/main.yml
+- name: Restart Nginx
+  service:
+    name: nginx
+    state: restarted
+
+roles/nginx_setup/defaults/main.yml
+nginx_port: 80
+server_name: localhost
+
+roles/nginx_setup/templates/nginx.conf.j2
+server {
+    listen {{ nginx_port }};
+    server_name {{ server_name }};
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+    }
+}
+
+roles/nginx_setup/files/index.html
+<html>
+<head><title>Welcome to Nginx</title></head>
+<body><h1>Hello from Ansible Nginx Setup!</h1></body>
+</html>
+
+playbooks/install_nginx.yml
+---
+- name: Install and Configure Nginx
+  hosts: all
+  become: yes
+  roles:
+    - nginx_setup
+
+
+
+
+
