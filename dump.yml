@@ -1,78 +1,22 @@
-ansible_collections/
-  mynamespace/
-    mycollection/
-      README.md
-      galaxy.yml  # Collection metadata
-      requirements.yml  # Dependencies
-      roles/
-        htop_setup/
-          tasks/
-            main.yml  # Main tasks
-            - name: Install htop
-              dnf:
-                name: htop
-                state: present
+worker_processes auto;
 
-            - name: Ensure htop is available
-              command: which htop
-              register: htop_installed
-              changed_when: false
-              failed_when: htop_installed.rc != 0
-          handlers/
-            main.yml  # Handlers (not needed for htop but included for structure)
-            - name: Restart example service
-              service:
-                name: example
-                state: restarted
-          defaults/
-            main.yml  # Default variables
-            example_var: default_value
-          tests/
-            molecule/
-              default/
-                molecule.yml  # Molecule test config
-                ---
-                driver:
-                  name: docker
-                
-                platforms:
-                  - name: instance
-                    image: quay.io/centos/centos:stream8
-                    privileged: true
-                    command: "/usr/sbin/init"
-                    volumes:
-                      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-                
-                provisioner:
-                  name: ansible
-                
-                verifier:
-                  name: ansible
-                converge.yml  # Playbook for testing
-                ---
-                - name: Converge
-                  hosts: all
-                  become: yes
-                  roles:
-                    - htop_setup
-                verify.yml  # Verification script
-                ---
-                - name: Verify htop
-                  hosts: all
-                  gather_facts: no
-                  tasks:
-                    - name: Check if htop is installed
-                      command: which htop
-                      register: htop_installed
-                      changed_when: false
-                      failed_when: htop_installed.rc != 0
-      playbooks/
-        install_htop.yml  # Playbook to use the role
-        ---
-        - name: Install and Verify htop
-          hosts: all
-          become: yes
-          roles:
-            - htop_setup
-      inventory/
-        hosts.ini  # Inventory file
+events {
+    worker_connections 1024;
+}
+
+http {
+    server {
+        listen 80;
+        server_name {{ server_name }};
+
+        root {{ document_root }};
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+}
+
+server_name: example.com
+document_root: /var/www/html
