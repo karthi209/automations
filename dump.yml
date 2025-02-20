@@ -5,57 +5,28 @@ ansible_collections/
       galaxy.yml  # Collection metadata
       requirements.yml  # Dependencies
       roles/
-        postgresql_setup/
+        htop_setup/
           tasks/
             main.yml  # Main tasks
-            - name: Install PostgreSQL
-              yum:
-                name: postgresql-server
+            - name: Install htop
+              dnf:
+                name: htop
                 state: present
 
-            - name: Initialize PostgreSQL database
-              command: postgresql-setup --initdb
-              args:
-                creates: /var/lib/pgsql/data/PG_VERSION
-
-            - name: Start and enable PostgreSQL service
-              service:
-                name: postgresql
-                state: started
-                enabled: yes
-
-            - name: Configure PostgreSQL authentication
-              lineinfile:
-                path: /var/lib/pgsql/data/pg_hba.conf
-                line: 'host all all 0.0.0.0/0 md5'
-                insertafter: EOF
-                state: present
-              notify: Restart PostgreSQL
-
-            - name: Allow remote connections
-              lineinfile:
-                path: /var/lib/pgsql/data/postgresql.conf
-                regexp: '^#listen_addresses'
-                line: "listen_addresses = '*'"
-              notify: Restart PostgreSQL
-
-            - name: Create test database
-              become_user: postgres
-              postgresql_db:
-                name: testdb
-                state: present
+            - name: Ensure htop is available
+              command: which htop
+              register: htop_installed
+              changed_when: false
+              failed_when: htop_installed.rc != 0
           handlers/
-            main.yml  # Handlers for service restart
-            - name: Restart PostgreSQL
+            main.yml  # Handlers (not needed for htop but included for structure)
+            - name: Restart example service
               service:
-                name: postgresql
+                name: example
                 state: restarted
           defaults/
             main.yml  # Default variables
-            postgres_port: 5432
-          templates/
-            pg_hba.conf.j2  # Jinja2 template for authentication
-            host all all 0.0.0.0/0 md5
+            example_var: default_value
           tests/
             molecule/
               default/
@@ -83,39 +54,25 @@ ansible_collections/
                   hosts: all
                   become: yes
                   roles:
-                    - postgresql_setup
+                    - htop_setup
                 verify.yml  # Verification script
                 ---
-                - name: Verify PostgreSQL
+                - name: Verify htop
                   hosts: all
                   gather_facts: no
                   tasks:
-                    - name: Check if PostgreSQL is installed
-                      command: rpm -q postgresql-server
-                      register: postgres_installed
+                    - name: Check if htop is installed
+                      command: which htop
+                      register: htop_installed
                       changed_when: false
-                      failed_when: postgres_installed.rc != 0
-                    
-                    - name: Check if PostgreSQL service is running
-                      service:
-                        name: postgresql
-                        state: started
-                      register: postgres_service
-                      failed_when: postgres_service.state != 'started'
-                    
-                    - name: Check if test database exists
-                      become_user: postgres
-                      command: psql -lqt | cut -d \| -f 1 | grep -w testdb
-                      register: db_exists
-                      changed_when: false
-                      failed_when: db_exists.rc != 0
+                      failed_when: htop_installed.rc != 0
       playbooks/
-        install_postgresql.yml  # Playbook to use the role
+        install_htop.yml  # Playbook to use the role
         ---
-        - name: Install and Configure PostgreSQL
+        - name: Install and Verify htop
           hosts: all
           become: yes
           roles:
-            - postgresql_setup
+            - htop_setup
       inventory/
         hosts.ini  # Inventory file
