@@ -8,8 +8,8 @@ def load_json(file_path):
         return json.load(file)
 
 def extract_version_from_filename(file_path):
-    match = re.search(r'(\d+_\d+_\d+)\.json$', file_path)
-    return match.group(1) if match else "unknown"
+    match = re.search(r'(\d+)_(\d+)_(\d+)\.json$', file_path)
+    return f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match else "unknown"
 
 def compare_versions(prod_data, latest_data):
     changes = []
@@ -26,7 +26,7 @@ def generate_report(prod_file, latest_file, output_file):
     latest_data = load_json(latest_file)
     
     prod_version = extract_version_from_filename(prod_file)
-    latest_version = latest_data.get("image_version", "unknown")
+    latest_version = extract_version_from_filename(latest_file)
     
     version_diff = compare_versions(prod_data, latest_data)
     
