@@ -23,16 +23,22 @@ git submodule foreach --quiet --recursive '
     echo -e "\n#### Submodule: $SUBMODULE_NAME ($SUBMODULE_PATH) ####"
 
     # Get the commit hash of the submodule from the main repository at OLD_TAG
-    OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk "{print \$3}")
+    OLD_COMMIT=$(git ls-tree '"$OLD_TAG"' -- "$SUBMODULE_PATH" 2>/dev/null | awk "{print \$3}")
+
+    # Debugging: Print what we got
+    echo "DEBUG: OLD_COMMIT for $SUBMODULE_NAME: $OLD_COMMIT"
 
     if [ -z "$OLD_COMMIT" ]; then
         echo "⚠️ Skipping $SUBMODULE_NAME: Not present in $OLD_TAG"
     else
-        # Get the latest commit in the submodule
-        NEW_COMMIT=$(cd "$SUBMODULE_PATH" && git rev-parse HEAD)
-
-        # Generate compare link
-        SUBMODULE_URL="'"$GITHUB_URL"'/$SUBMODULE_PATH"
-        echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
+        # Validate commit exists
+        if ! git rev-parse "$OLD_COMMIT" >/dev/null 2>&1; then
+            echo "⚠️ OLD_COMMIT ($OLD_COMMIT) not found in local repo. Try 'git fetch --recurse-submodules'."
+        else
+            # Get the latest commit in the submodule
+            NEW_COMMIT=$(cd "$SUBMODULE_PATH" && git rev-parse HEAD)
+            SUBMODULE_URL="'"$GITHUB_URL"'/$SUBMODULE_PATH"
+            echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
+        fi
     fi
 '
