@@ -25,18 +25,18 @@ def compare_versions(prod_data, latest_data):
             key = clean_key_path(change.path())
             old_value = change.t1
             new_value = change.t2
-            changes_list.append(f"{key}:\n    - Old: {old_value}\n    - New: {new_value}\n")
+            changes_list.append(f"{key}: {old_value} >> {new_value}\n")
 
     # Handle added and removed keys
     if "dictionary_item_added" in changes:
         for change in changes["dictionary_item_added"]:
             key = clean_key_path(change.path())
-            changes_list.append(f"Added: {key}\n    - New: {latest_data.get(key, 'N/A')}\n")
+            changes_list.append(f"Added: {key} -> {latest_data.get(key, 'N/A')}\n")
 
     if "dictionary_item_removed" in changes:
         for change in changes["dictionary_item_removed"]:
             key = clean_key_path(change.path())
-            changes_list.append(f"Removed: {key}\n    - Old: {prod_data.get(key, 'N/A')}\n")
+            changes_list.append(f"Removed: {key} -> {prod_data.get(key, 'N/A')}\n")
 
     return "\n".join(changes_list)
 
