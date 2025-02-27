@@ -11,6 +11,10 @@ def extract_version_from_filename(file_path):
     match = re.search(r'(\d+)_(\d+)_(\d+)\.json$', file_path)
     return f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match else "unknown"
 
+def clean_key_path(path):
+    """Extracts key name from DeepDiff path notation."""
+    return path.replace("root['", "").replace("']", "")
+
 def compare_versions(prod_data, latest_data):
     changes = DeepDiff(prod_data, latest_data, ignore_order=True, view="tree")
 
@@ -18,19 +22,19 @@ def compare_versions(prod_data, latest_data):
 
     # Handle key-value changes
     for change in changes.get("values_changed", []):
-        key = change.path()
+        key = clean_key_path(change.path())
         old_value = change.t1
         new_value = change.t2
         changes_list.append(f"{key}: {old_value} >> {new_value}")
 
     # Handle added and removed keys
     for change in changes.get("dictionary_item_added", []):
-        key = change.path()
-        changes_list.append(f"Added: {key} -> {latest_data.get(key.strip('root'))}")
+        key = clean_key_path(change.path())
+        changes_list.append(f"Added: {key} -> {latest_data.get(key)}")
 
     for change in changes.get("dictionary_item_removed", []):
-        key = change.path()
-        changes_list.append(f"Removed: {key} -> {prod_data.get(key.strip('root'))}")
+        key = clean_key_path(change.path())
+        changes_list.append(f"Removed: {key} -> {prod_data.get(key)}")
 
     return "\n".join(changes_list)
 
@@ -60,6 +64,7 @@ image version: {prod_version} >> {latest_version}
 ```json
 {json.dumps(latest_data, indent=4)}
 ```
+
 """
     
     with open(output_file, 'w') as file:
