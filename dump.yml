@@ -26,31 +26,42 @@ jobs:
           OLD_TAG=${{ github.event.inputs.old_tag }}
           NEW_TAG=${{ github.event.inputs.new_tag }}
           GITHUB_URL="https://github.com/${{ github.repository }}"
+          CHANGELOG_FILE="submodule_changelog.md"
 
-          echo "Generating changelog links for submodules between $OLD_TAG and $NEW_TAG..."
+          echo "# Submodule Changelog" > $CHANGELOG_FILE
+          echo "Comparing **$OLD_TAG** → **$NEW_TAG**" >> $CHANGELOG_FILE
+          echo "" >> $CHANGELOG_FILE
 
-          echo -e "\n### Main Repository Changes ###"
-          echo "$GITHUB_URL/compare/$OLD_TAG...$NEW_TAG"
+          echo "## Main Repository Changes" >> $CHANGELOG_FILE
+          echo "[$OLD_TAG...$NEW_TAG]($GITHUB_URL/compare/$OLD_TAG...$NEW_TAG)" >> $CHANGELOG_FILE
+          echo "" >> $CHANGELOG_FILE
 
           git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
 
           while IFS= read -r SUBMODULE_PATH; do
-              echo -e "\n#### Submodule: $SUBMODULE_PATH ####"
+              echo "### $SUBMODULE_PATH" >> $CHANGELOG_FILE
 
               OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk '{print $3}')
               echo "DEBUG: OLD_COMMIT for $SUBMODULE_PATH: $OLD_COMMIT"
 
               if [ -z "$OLD_COMMIT" ]; then
-                  echo "⚠️ Skipping $SUBMODULE_PATH: Not present in $OLD_TAG"
+                  echo "**⚠️ Skipping:** Not present in $OLD_TAG" >> $CHANGELOG_FILE
               else
                   if ! git rev-parse "$OLD_COMMIT" >/dev/null 2>&1; then
-                      echo "⚠️ OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'."
+                      echo "**⚠️ Error:** OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'." >> $CHANGELOG_FILE
                   else
                       NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
                       SUBMODULE_URL="$GITHUB_URL/tree/main/$SUBMODULE_PATH"
-                      echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
+                      echo "[Compare Changes]($SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT)" >> $CHANGELOG_FILE
                   fi
               fi
+              echo "" >> $CHANGELOG_FILE
           done < submodules_list.txt
 
           rm -f submodules_list.txt
+
+      - name: Upload Changelog as Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: submodule-changelog
+          path: submodule_changelog.md
