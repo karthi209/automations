@@ -15,6 +15,10 @@ def clean_key_path(path):
     """Extracts key name from DeepDiff path notation."""
     return re.sub(r"root\['(.*?)'\]", r"\1", path)
 
+def format_list_changes(old_list, new_list):
+    """Formats list differences with new lines for better readability."""
+    return "\n".join([f"  - {item}" for item in new_list if item not in old_list])
+
 def compare_versions(prod_data, latest_data):
     changes = DeepDiff(prod_data, latest_data, ignore_order=True, view="tree")
     changes_list = []
@@ -25,7 +29,11 @@ def compare_versions(prod_data, latest_data):
             key = clean_key_path(change.path())
             old_value = change.t1
             new_value = change.t2
-            changes_list.append(f"{key}: {old_value} >> {new_value}\n")
+            if isinstance(old_value, list) and isinstance(new_value, list):
+                list_changes = format_list_changes(old_value, new_value)
+                changes_list.append(f"{key} updated:\n{list_changes}\n")
+            else:
+                changes_list.append(f"{key}: {old_value} >> {new_value}\n")
 
     # Handle added and removed keys
     if "dictionary_item_added" in changes:
