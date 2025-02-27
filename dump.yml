@@ -25,7 +25,7 @@ jobs:
         run: |
           OLD_TAG=${{ github.event.inputs.old_tag }}
           NEW_TAG=${{ github.event.inputs.new_tag }}
-          GITHUB_URL="https://github.com/${{ github.repository }}"
+          MAIN_REPO="https://github.com/devsecops/agent_build"
           CHANGELOG_FILE="submodule_changelog.md"
 
           echo "# Submodule Changelog" > $CHANGELOG_FILE
@@ -33,7 +33,7 @@ jobs:
           echo "" >> $CHANGELOG_FILE
 
           echo "## Main Repository Changes" >> $CHANGELOG_FILE
-          echo "[$OLD_TAG...$NEW_TAG]($GITHUB_URL/compare/$OLD_TAG...$NEW_TAG)" >> $CHANGELOG_FILE
+          echo "[$OLD_TAG...$NEW_TAG]($MAIN_REPO/compare/$OLD_TAG...$NEW_TAG)" >> $CHANGELOG_FILE
           echo "" >> $CHANGELOG_FILE
 
           git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
@@ -51,8 +51,14 @@ jobs:
                       echo "**⚠️ Error:** OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'." >> $CHANGELOG_FILE
                   else
                       NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
-                      SUBMODULE_URL="$GITHUB_URL/tree/main/$SUBMODULE_PATH"
-                      echo "[Compare Changes]($SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT)" >> $CHANGELOG_FILE
+
+                      # Extract submodule repo name from its path
+                      SUBMODULE_NAME=$(basename "$SUBMODULE_PATH")
+
+                      # Construct the correct URL for the submodule
+                      SUBMODULE_REPO="https://github.com/devsecops/$SUBMODULE_NAME"
+
+                      echo "[View Commit]($SUBMODULE_REPO/tree/$NEW_COMMIT)" >> $CHANGELOG_FILE
                   fi
               fi
               echo "" >> $CHANGELOG_FILE
