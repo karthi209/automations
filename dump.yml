@@ -1,605 +1,67 @@
-import subprocess
 import json
 import sys
-import time
-import os
 import re
+from deepdiff import DeepDiff
 
-def safe_subprocess_call(command, description):
-    """Executes a subprocess command and logs errors if it fails."""
-    try:
-        print(f"Running: {description}...")
-        subprocess.check_call(command)
-    except subprocess.CalledProcessError as e:
-        print(f"Error during {description}: {e}")
-        sys.exit(1)
+def load_json(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)
 
-def run_docker_tests(image_name):
-    container_name = f"test-container-{int(time.time())}"
-    container_tmp_dir = "/tmp/test_tools"
-    host_config_file = os.path.abspath("./tool_version_config.json")
-    image_name_unclean = re.sub(r'[.:/-]', '_', image_name)
-    host_tool_version_output = os.path.abspath(f"./tool_versions_{image_name_unclean}.json")
+def extract_version_from_filename(file_path):
+    match = re.search(r'(\d+)_(\d+)_(\d+)\.json$', file_path)
+    return f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match else "unknown"
 
-    # Check if the image exists locally, if not, pull it
-    check_cmd = ["docker", "images", "-q", image_name]
-    result = subprocess.run(check_cmd, capture_output=True, text=True)
+def compare_versions(prod_data, latest_data):
+    changes = []
     
-    if not result.stdout.strip():
-        print(f"Image '{image_name}' not found locally, pulling from remote...")
-        safe_subprocess_call(["docker", "pull", image_name], "pull Docker image")
+    for key, old_version in prod_data.items():
+        new_version = latest_data.get(key, "0.0.0")
+        if old_version != new_version:
+            changes.append(f"{key}: {old_version} >> {new_version}")
+    
+    return "\n".join(changes)
 
-    # Start the container in detached mode
-    safe_subprocess_call(["docker", "run", "-d", "--user", "runner", "--name", container_name, image_name, "tail", "-f", "/dev/null"], "start Docker container")
+def generate_report(prod_file, latest_file, output_file):
+    prod_data = load_json(prod_file)
+    latest_data = load_json(latest_file)
+    
+    prod_version = extract_version_from_filename(prod_file)
+    latest_version = extract_version_from_filename(latest_file)
+    
+    version_diff = compare_versions(prod_data, latest_data)
+    
+    report = f"""
+## What changed between {prod_version} (prod) and {latest_version} (latest)
 
-    # Ensure /tmp/test_tools directory exists inside the container
-    safe_subprocess_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir], "prepare /tmp/test_tools directory")
-    safe_subprocess_call(["docker", "exec", container_name, "chmod", "777", container_tmp_dir], "set permissions for /tmp/test_tools directory")
+```bash
+image version: {prod_version} >> {latest_version}
 
-    # Copy test scripts and tool_version_config.json to /tmp folder inside the container
-    safe_subprocess_call(["docker", "cp", host_config_file, f"{container_name}:{container_tmp_dir}/tool_version_config.json"], "copy tool_version_config.json")
+*********** Changes *********************
 
-    # Verify the copied files
-    safe_subprocess_call(["docker", "exec", container_name, "ls", "-la", container_tmp_dir], "list contents of /tmp/test_tools")
+{version_diff}
 
-    # Run tool version retrieval inside the container
-    safe_subprocess_call([
-        "docker", "exec", container_name, "python3", "-c", """
-import json, subprocess, os, re
+*********** End of Changes *********************
+```
 
-TOOL_VERSION_CONFIG = '/tmp/test_tools/tool_version_config.json'
-OUTPUT_FILE = f'/tmp/test_tools/tool_versions.json'
+## {latest_version} Full Image State (latest)
+```json
+{json.dumps(latest_data, indent=4)}
+```
 
-def get_version(tool, command):
-    try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        return result.stdout.strip()
-    except Exception as e:
-        return str(e)
-
-def get_tool_versions():
-    tool_versions = {}
-    try:
-        with open(TOOL_VERSION_CONFIG, 'r') as f:
-            tools_config = json.load(f)
-        for tool, details in tools_config.items():
-            command = details.get('command', '')
-            tool_versions[tool] = get_version(tool, command) if command else "No command found"
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    with open(OUTPUT_FILE, 'w') as outfile:
-        json.dump(tool_versions, outfile, indent=4)
-
-get_tool_versions()
 """
-    ], "execute tool version retrieval inside container")
+    
+    with open(output_file, 'w') as file:
+        file.write(report)
+    
+    print(f"Report generated and saved to {output_file}")
 
-    # Copy the tool versions output file back to the host
-    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/tool_versions.json", host_tool_version_output], "copy tool versions output")
-
-    print(f"Tool versions saved at {host_tool_version_output}")
-
-    # Stop and remove the container
-    safe_subprocess_call(["docker", "stop", container_name], "stop container")
-    safe_subprocess_call(["docker", "rm", container_name], "remove container")
-
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python get_tool_version.py <docker_image_name>")
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Usage: python compare_reports.py <prod_json> <latest_json> <output_md>")
         sys.exit(1)
-
-    docker_image_name = sys.argv[1]
-    run_docker_tests(docker_image_name)
-
-
-
-
-{
-    "bash": {
-      "command": "bash --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "screen": {
-      "command": "screen --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "openssl": {
-      "command": "openssl version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "procps": {
-      "command": "ps --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "tzdata": {
-      "command": "rpm -q tzdata | awk 'NR==1'"
-    },
-    "autoconf": {
-      "command": "autoconf --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "make": {
-      "command": "make --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "tar": {
-      "command": "tar --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "zip": {
-      "command": "zip --version | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "iptables": {
-      "command": "iptables --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "zlib-devel": {
-      "command": "rpm -q zlib-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "brotli-devel": {
-      "command": "rpm -q brotli-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "openssl-devel": {
-      "command": "rpm -q openssl-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "libuv-devel": {
-      "command": "rpm -q libuv-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "krb5-devel": {
-      "command": "rpm -q krb5-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "krb5-libs": {
-      "command": "rpm -q krb5-libs | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "krb5-pkinit": {
-      "command": "rpm -q krb5-libs | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "krb5-workstation": {
-      "command": "rpm -q krb5-workstation | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "glibc-langpack-en": {
-      "command": "rpm -q glibc-langpack-en | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "python": {
-      "command": "python3.11 --version | awk '{print $2}'"
-    },
-    "python3.11-devel": {
-      "command": "rpm -q python3.11-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "python3.11-pip": {
-      "command": "rpm -q python3.11-pip | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "python3.11-kerberos": {
-      "command": "rpm -q python3.11-kerberos | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "python3.11-cryptography": {
-      "command": "rpm -q python3.11-cryptography | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "github-cli": {
-      "command": "gh --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "az-cli": {
-      "command": "az --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "bluemix-cli": {
-      "command": "bluemix --version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ibmcloud-cli": {
-      "command": "ibmcloud -v | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "sqlcmd": {
-      "command": "sqlcmd -? | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "psql": {
-      "command": "psql --version | awk '{print $3}'"
-    },
-    "curl": {
-      "command": "curl -V | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "yq": {
-      "command": "yq -V | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "openshift-cli": {
-      "command": "oc version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "sqlplus": {
-      "command": "sqlplus -V | awk 'NR==2' | awk '{print $3}'"
-    },
-    "rsync": {
-      "command": "rsync --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "skopeo": {
-      "command": "skopeo --version | awk '{print $3}'"
-    },
-    "checkmarx": {
-      "command": "cx version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "jfrog-cli": {
-      "command": "jf -v | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "databricks-cli": {
-      "command": "databricks --version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "twist-cli": {
-      "command": "twistcli --version | awk '{print $NF}'"
-    },
-    "powershell": {
-      "command": "pwsh -v | awk '{print $NF}'"
-    },
-    "nexusiq-cli": {
-      "command": "nexus-iq-cli -v | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gettext": {
-      "command": "gettext --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "buildah": {
-      "command": "buildah version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ansible": {
-      "command": "ansible --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ansible-playbook": {
-      "command": "ansible-playbook --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "terraform": {
-      "command": "terraform --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "xlsxWriter": {
-      "command": "pip list | grep -i XlsxWriter | awk '{print $2}'"
-    },
-    "git": {
-      "command": "git --version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "clover": {
-      "command": "jar xf /opt/clover/clover-4.5.0/lib/clover-4.5.0.jar  META-INF/MANIFEST.MF && cat META-INF/MANIFEST.MF | grep Implementation-Version | awk '{print $2}'"
-    },
-    "mercurial": {
-      "command": "hg --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "mvn": {
-      "command": "mvn -version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ant": {
-      "command": "ant -version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "jproxy": {
-      "command": "java -jar /opt/jproxy/jproxy-1.0.jar | awk 'NR==10' | awk '{print $12}' | awk '{match($0, /[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gradle": {
-      "command": "gradle --version | grep 'Gradle' | awk '{print $4}' | sed 's/.$//'"
-    },
-    "java-default": {
-      "command": "java -version 2>&1 | awk -F '\"' '/version/ {print $2}'"
-    },
-    "java-alternatives": {
-      "command": "update-alternatives --config java"
-    },
-    "node": {
-      "command": "node --version | awk '{print substr($0,2)}'"
-    },
-    "go": {
-      "command": "go version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ng": {
-      "command": "ng --version"
-    },
-    "awx-cli": {
-      "command": "pip list | grep -i awx | awk '{print $2}'"
-    },
-    "cosign": {
-      "command": "cosign version | awk 'NR==9' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "grunt": {
-      "command": "grunt --version | grep grunt-cli | awk '{print $NF}' | sed 's/^v//'"
-    },
-    "dotnet": {
-      "command": "dotnet --version"
-    },
-    "groovy": {
-      "command": "groovy -v | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "helm": {
-      "command": "helm version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "kubelogin": {
-      "command": "kubelogin --version | head -n 2 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "kubectl": {
-      "command": "kubectl version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "docker": {
-      "command": "docker --version | awk '{print $3}' | sed 's/,//'"
-    },
-    "kubeseal": {
-      "command": "kubeseal --version | awk 'NR==1' | awk '{print $NF}'"
-    },
-    "kubeval": {
-      "command": "kubeval --version  | grep Version | awk '{print $NF }'"
-    },
-    "chrome": {
-      "command": "google-chrome --version | awk '{print $NF}'"
-    },
-    "opa": {
-      "command": "opa version | awk 'NR==1' | awk '{print $2}'"
-    },
-    "liquibase": {
-      "command": "liquibase -v | awk '/Liquibase Version:/{print $NF}'"
-    },
-    "sonar-scanner": {
-      "command": "sonar-scanner --version | head -n 3 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "sonar-runner": {
-      "command": "sonar-runner --version | awk 'NR==1' | awk '{print $3}'"
-    },
-    "tidelift-cli": {
-      "command": "tidelift version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "maven": {
-      "command": "mvn -version | head -1 | awk '{print $3}'"
-    },
-    "xz": {
-      "command": "xz --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "binutils": {
-      "command": "rpm -q binutils | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "net-tools": {
-      "command": "rpm -q net-tools | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "iputils": {
-      "command": "rpm -q iputils | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "bind9.16-utils": {
-      "command": "rpm -q bind9.16-utils | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "nc": {
-      "command": "nc --version"
-    },
-    "dnsutils": {
-      "command": "rpm -q dnsutils | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "sudo": {
-      "command": "sudo --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "kernel-headers": {
-      "command": "rpm -q kernel-headers | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "kernel-devel": {
-      "command": "rpm -q kernel-devel | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gcc": {
-      "command": "gcc --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gcc-c++": {
-      "command": "rpm -q gcc-c++ | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "bison": {
-      "command": "rpm -q bison | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "flex": {
-      "command": "rpm -q flex | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "patch": {
-      "command": "rpm -q patch | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gcc-toolset-14-gcc-c+": {
-      "command": "rpm -q gcc-toolset-14-gcc-c+ | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "jmeter": {
-      "command": "jmeter --version | awk 'NR==9' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "jq": {
-      "command": "jq --version | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "sshpass": {
-      "command": "sshpass -V | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "unzip": {
-      "command": "unzip -V"
-    },
-    "wget": {
-      "command": "wget -V | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "adal": {
-      "command": "pip show adal | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "libdnf5": {
-      "command": "pip show libdnf5 | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "crowd": {
-      "command": "pip show crowd | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "xmltodict": {
-      "command": "pip show xmltodict | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "aiojenkins": {
-      "command": "pip show aiojenkins | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gitpython": {
-      "command": "pip show gitpython | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "jinja2": {
-      "command": "pip show jinja2 | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "MarkupSafe": {
-      "command": "pip show MarkupSafe | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "PyGithub": {
-      "command": "pip show PyGithub | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "PyJWT": {
-      "command": "pip show PyJWT | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "PyMySQL": {
-      "command": "pip show PyMySQL | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "PyYAML": {
-      "command": "pip show PyYAML | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "cachetools": {
-      "command": "pip show cachetools | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "certifi": {
-      "command": "pip show certifi | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "cffi": {
-      "command": "pip show cffi | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "chardet": {
-      "command": "pip show chardet | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "cryptography": {
-      "command": "pip show cryptography | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "deepdiff": {
-      "command": "pip show deepdiff | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "defusedxml": {
-      "command": "pip show defusedxml | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "dictdiffer": {
-      "command": "pip show dictdiffer | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "dohq-artifactory": {
-      "command": "pip show dohq-artifactory | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "gitdb": {
-      "command": "pip show gitdb | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "google-auth": {
-      "command": "pip show google-auth | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "idna": {
-      "command": "pip show idna | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "jmespath": {
-      "command": "pip show jmespath | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "k8s": {
-      "command": "pip show k8s | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "kubernetes": {
-      "command": "pip show kubernetes | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "msal": {
-      "command": "pip show msal | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "msal-extensions": {
-      "command": "pip show msal-extensions | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "msrest": {
-      "command": "pip show msrest | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "msrestazure": {
-      "command": "pip show msrestazure | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "neo4j": {
-      "command": "pip show neo4j | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "netaddr": {
-      "command": "pip show netaddr | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "numpy": {
-      "command": "pip show numpy | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "oauthlib": {
-      "command": "pip show oauthlib | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "openshift": {
-      "command": "pip show openshift | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "packaging": {
-      "command": "pip show packaging | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pandas": {
-      "command": "pip show pandas | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pathlib": {
-      "command": "pip show pathlib | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pbr": {
-      "command": "pip show pbr | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pika": {
-      "command": "pip show pika | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "Pint": {
-      "command": "pip show Pint | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pyRFC3339": {
-      "command": "pip show pyRFC3339 | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pyasn1": {
-      "command": "pip show pyasn1 | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pyasn1-modules": {
-      "command": "pip show pyasn1-modules | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pycobertura": {
-      "command": "pip show pycobertura | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pycparser": {
-      "command": "pip show pycparser | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pyparsing": {
-      "command": "pip show pyparsing | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "python-dateutil": {
-      "command": "pip show python-dateutil | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "python-string-utils": {
-      "command": "pip show python-string-utils | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pytz": {
-      "command": "pip show pytz | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "requests": {
-      "command": "pip show requests | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "requests-oauthlib": {
-      "command": "pip show requests-oauthlib | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "requests-toolbelt": {
-      "command": "pip show requests-toolbelt | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "resolvelib": {
-      "command": "pip show resolvelib | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "rsa": {
-      "command": "pip show rsa | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ruamel.yaml": {
-      "command": "pip show ruamel.yaml | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "ruamel.yaml.clib": {
-      "command": "pip show ruamel.yaml.clib | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "six": {
-      "command": "pip show six | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "smmap": {
-      "command": "pip show smmap | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "twine": {
-      "command": "pip show twine | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "urllib3": {
-      "command": "pip show urllib3 | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "websocket-client": {
-      "command": "pip show websocket-client | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "wrapt": {
-      "command": "pip show wrapt | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "Jira": {
-      "command": "pip show Jira | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pykerberos": {
-      "command": "pip show pykerberos | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pywinrm": {
-      "command": "pip show pywinrm | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "pyppeteer": {
-      "command": "pip show pyppeteer | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "openapi-spec-validator": {
-      "command": "pip show openapi-spec-validator | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    },
-    "psycopg2-binary": {
-      "command": "pip show psycopg2-binary | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
-    }
-  }
+    
+    prod_json = sys.argv[1]
+    latest_json = sys.argv[2]
+    output_md = sys.argv[3]
+    
+    generate_report(prod_json, latest_json, output_md)
