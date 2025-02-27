@@ -1,102 +1,67 @@
-import subprocess
 import json
 import sys
-import time
-import os
 import re
+from deepdiff import DeepDiff
 
-def safe_subprocess_call(command, description):
-    """Executes a subprocess command and logs errors if it fails."""
-    try:
-        print(f"Running: {description}...")
-        subprocess.check_call(command)
-    except subprocess.CalledProcessError as e:
-        print(f"Error during {description}: {e}")
-        sys.exit(1)
+def load_json(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)
 
-def run_docker_tests(image_name):
-    container_name = f"test-container-{int(time.time())}"
-    container_tmp_dir = "/tmp/test_tools"
-    host_config_file = os.path.abspath("./tool_version_config.json")
-    image_name_unclean = re.sub(r'[.:/-]', '_', image_name)
-    host_tool_version_output = os.path.abspath(f"./tool_versions_{image_name_unclean}.json")
-    host_script_file = os.path.abspath("./get_tool_versions.py")
+def extract_version_from_filename(file_path):
+    match = re.search(r'(\d+)_(\d+)_(\d+)\.json$', file_path)
+    return f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match else "unknown"
 
-    # Python script for tool version retrieval
-    python_script_content = """\
-import json
-import subprocess
-import os
-
-TOOL_VERSION_CONFIG = '/tmp/test_tools/tool_version_config.json'
-OUTPUT_FILE = '/tmp/test_tools/tool_versions.json'
-
-def get_version(tool, command, multi_line=False):
-    try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        return result.stdout.strip().split("\\n") if multi_line else result.stdout.strip()
-    except Exception as e:
-        return str(e)
-
-def get_tool_versions():
-    tool_versions = {}
-    try:
-        with open(TOOL_VERSION_CONFIG, 'r') as f:
-            tools_config = json.load(f)
-        for tool, details in tools_config.items():
-            command = details.get('command', '')
-            multi_line = details.get('multi_line_output', False)
-            tool_versions[tool] = get_version(tool, command, multi_line) if command else "No command found"
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    with open(OUTPUT_FILE, 'w') as outfile:
-        json.dump(tool_versions, outfile, indent=4)
-
-get_tool_versions()
-"""
-
-    # Write script to file
-    with open(host_script_file, "w") as f:
-        f.write(python_script_content)
-
-    # Check if the image exists locally, if not, pull it
-    check_cmd = ["docker", "images", "-q", image_name]
-    result = subprocess.run(check_cmd, capture_output=True, text=True)
+def compare_versions(prod_data, latest_data):
+    changes = []
     
-    if not result.stdout.strip():
-        print(f"Image '{image_name}' not found locally, pulling from remote...")
-        safe_subprocess_call(["docker", "pull", image_name], "pull Docker image")
+    for key, old_version in prod_data.items():
+        new_version = latest_data.get(key, "0.0.0")
+        if old_version != new_version:
+            changes.append(f"{key}: {old_version} >> {new_version}")
+    
+    return "\n".join(changes)
 
-    # Start the container in detached mode
-    safe_subprocess_call(["docker", "run", "-d", "--user", "runner", "--name", container_name, image_name, "tail", "-f", "/dev/null"], "start Docker container")
+def generate_report(prod_file, latest_file, output_file):
+    prod_data = load_json(prod_file)
+    latest_data = load_json(latest_file)
+    
+    prod_version = extract_version_from_filename(prod_file)
+    latest_version = extract_version_from_filename(latest_file)
+    
+    version_diff = compare_versions(prod_data, latest_data)
+    
+    report = f"""
+## What changed between {prod_version} (prod) and {latest_version} (latest)
 
-    # Ensure /tmp/test_tools directory exists inside the container
-    safe_subprocess_call(["docker", "exec", container_name, "mkdir", "-p", container_tmp_dir], "prepare /tmp/test_tools directory")
-    safe_subprocess_call(["docker", "exec", container_name, "chmod", "777", container_tmp_dir], "set permissions for /tmp/test_tools directory")
+```bash
+image version: {prod_version} >> {latest_version}
 
-    # Copy test scripts and tool_version_config.json to the container
-    safe_subprocess_call(["docker", "cp", host_config_file, f"{container_name}:{container_tmp_dir}/tool_version_config.json"], "copy tool_version_config.json")
-    safe_subprocess_call(["docker", "cp", host_script_file, f"{container_name}:{container_tmp_dir}/get_tool_versions.py"], "copy get_tool_versions.py")
+*********** Changes *********************
 
-    # Verify the copied files
-    safe_subprocess_call(["docker", "exec", container_name, "ls", "-la", container_tmp_dir], "list contents of /tmp/test_tools")
+{version_diff}
 
-    # Run tool version retrieval inside the container
-    safe_subprocess_call(["docker", "exec", container_name, "python3", f"{container_tmp_dir}/get_tool_versions.py"], "execute tool version retrieval inside container")
+*********** End of Changes *********************
+```
 
-    # Copy the tool versions output file back to the host
-    safe_subprocess_call(["docker", "cp", f"{container_name}:{container_tmp_dir}/tool_versions.json", host_tool_version_output], "copy tool versions output")
+## {latest_version} Full Image State (latest)
+```json
+{json.dumps(latest_data, indent=4)}
+```
 
-    print(f"Tool versions saved at {host_tool_version_output}")
+"""
+    
+    with open(output_file, 'w') as file:
+        file.write(report)
+    
+    print(f"Report generated and saved to {output_file}")
 
-    # Stop and remove the container
-    safe_subprocess_call(["docker", "stop", container_name], "stop container")
-    safe_subprocess_call(["docker", "rm", container_name], "remove container")
-
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python get_tool_version.py <docker_image_name>")
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Usage: python compare_reports.py <prod_json> <latest_json> <output_md>")
         sys.exit(1)
-
-    docker_image_name = sys.argv[1]
-    run_docker_tests(docker_image_name)
+    
+    prod_json = sys.argv[1]
+    latest_json = sys.argv[2]
+    output_md = sys.argv[3]
+    
+    generate_report(prod_json, latest_json, output_md)
