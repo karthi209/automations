@@ -1,94 +1,10 @@
-import json
-import sys
-import re
-from deepdiff import DeepDiff
-
-def load_json(file_path):
-    with open(file_path, 'r') as file:
-        return json.load(file)
-
-def extract_version_from_filename(file_path):
-    match = re.search(r'\d+_\d+_\d+', file_path)
-    return match.group(0).replace('_', '.') if match else "unknown"
-
-def clean_key_path(path):
-    """Extracts key name from DeepDiff path notation."""
-    return re.sub(r"root\['(.*?)'\]", r"\1", path)
-
-def format_list_changes(old_list, new_list):
-    """Formats list differences with new lines for better readability."""
-    return "\n".join([f"  - {item}" for item in new_list if item not in old_list])
-
-def compare_versions(prod_data, latest_data):
-    changes = DeepDiff(prod_data, latest_data, ignore_order=True, view="tree")
-    changes_list = []
-
-    # Handle key-value changes
-    if "values_changed" in changes:
-        for change in changes["values_changed"]:
-            key = clean_key_path(change.path())
-            old_value = change.t1
-            new_value = change.t2
-            if isinstance(old_value, list) and isinstance(new_value, list):
-                list_changes = format_list_changes(old_value, new_value)
-                changes_list.append(f"{key} updated:\n{list_changes}\n")
-            else:
-                changes_list.append(f"{key}: {old_value} >> {new_value}\n")
-
-    # Handle added and removed keys
-    if "dictionary_item_added" in changes:
-        for change in changes["dictionary_item_added"]:
-            key = clean_key_path(change.path())
-            changes_list.append(f"Added: {key} -> {latest_data.get(key, 'N/A')}\n")
-
-    if "dictionary_item_removed" in changes:
-        for change in changes["dictionary_item_removed"]:
-            key = clean_key_path(change.path())
-            changes_list.append(f"Removed: {key} -> {prod_data.get(key, 'N/A')}\n")
-
-    return "\n".join(changes_list)
-
-def generate_report(prod_file, latest_file, output_file):
-    prod_data = load_json(prod_file)
-    latest_data = load_json(latest_file)
-    
-    prod_version = extract_version_from_filename(prod_file)
-    latest_version = extract_version_from_filename(latest_file)
-    
-    version_diff = compare_versions(prod_data, latest_data)
-    
-    report = f"""
-## What changed between {prod_version} (prod) and {latest_version} (latest)
-
-```bash
-image version: {prod_version} >> {latest_version}
-
-*********** Changes *********************
-
-{version_diff}
-
-*********** End of Changes *********************
-```
-
-## {latest_version} Full Image State (latest)
-```json
-{json.dumps(latest_data, indent=4)}
-```
-
-"""
-    
-    with open(output_file, 'w') as file:
-        file.write(report)
-    
-    print(f"Report generated and saved to {output_file}")
-
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python compare_reports.py <prod_json> <latest_json> <output_md>")
-        sys.exit(1)
-    
-    prod_json = sys.argv[1]
-    latest_json = sys.argv[2]
-    output_md = sys.argv[3]
-    
-    generate_report(prod_json, latest_json, output_md)
+jobs:
+  get-latest-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest release
+        run: |
+          LATEST_VERSION=$(gh release list --repo owner/repo --limit 1 --json tagName --jq '.[0].tagName')
+          echo "Latest release: $LATEST_VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
