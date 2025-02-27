@@ -1,6 +1,35 @@
-      - name: Get latest release from Enterprise
+      - name: Get latest pre-release or fallback to latest
         run: |
-          LATEST_VERSION=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          "https://github.company.com/api/v3/repos/my-org/my-repo/releases/latest" | jq -r .tag_name)
-          echo "Latest release: $LATEST_VERSION"
+          # Fetch all releases
+          RELEASES=$(curl -s -H "Authorization: Bearer ${{ secrets.GH_ENTERPRISE_PAT }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://github.company.com/api/v3/repos/owner/repo/releases")
+
+          # Extract latest pre-release
+          LATEST_PRERELEASE=$(echo "$RELEASES" | jq -r '[.[] | select(.prerelease == true)][0].tag_name')
+
+          # Extract latest official release
+          LATEST_RELEASE=$(echo "$RELEASES" | jq -r '[.[] | select(.prerelease == false)][0].tag_name')
+
+          # If no latest release is found, use pre-release (fallback)
+          if [ "$LATEST_RELEASE" == "null" ] || [ -z "$LATEST_RELEASE" ]; then
+            echo "No official release found. Using pre-release: $LATEST_PRERELEASE"
+            echo "FINAL_VERSION=$LATEST_PRERELEASE" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          # If no pre-release is found, use latest release
+          if [ "$LATEST_PRERELEASE" == "null" ] || [ -z "$LATEST_PRERELEASE" ]; then
+            echo "No pre-release found. Using latest official release: $LATEST_RELEASE"
+            echo "FINAL_VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          # Compare versions (assuming semantic versioning)
+          if printf '%s\n%s\n' "$LATEST_PRERELEASE" "$LATEST_RELEASE" | sort -V | tail -n 1 | grep -q "$LATEST_PRERELEASE"; then
+            echo "Using pre-release: $LATEST_PRERELEASE (newer than $LATEST_RELEASE)"
+            echo "FINAL_VERSION=$LATEST_PRERELEASE" >> $GITHUB_ENV
+          else
+            echo "Using latest official release: $LATEST_RELEASE"
+            echo "FINAL_VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
+          fi
