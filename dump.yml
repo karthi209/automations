@@ -1,10 +1,6 @@
-jobs:
-  get-latest-release:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get latest release
+      - name: Get latest release from Enterprise
         run: |
-          LATEST_VERSION=$(gh release list --repo owner/repo --limit 1 --json tagName --jq '.[0].tagName')
+          LATEST_VERSION=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://github.company.com/api/v3/repos/my-org/my-repo/releases/latest" | jq -r .tag_name)
           echo "Latest release: $LATEST_VERSION"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
