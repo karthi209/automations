@@ -22,11 +22,11 @@ git submodule foreach --quiet '
     SUBMODULE_PATH=$path
     echo -e "\n#### Submodule: $SUBMODULE_NAME ($SUBMODULE_PATH) ####"
 
-    # Check if the submodule exists in the old tag
-    OLD_COMMIT=$(git ls-tree $OLD_TAG "$path" 2>/dev/null | awk "{print \$3}")
+    # Get the commit hash of the submodule from the main repository at OLD_TAG
+    OLD_COMMIT=$(git ls-tree '"$OLD_TAG"' "$SUBMODULE_PATH" 2>/dev/null | awk "{print \$3}")
 
     if [ -z "$OLD_COMMIT" ]; then
-        echo "⚠️ Skipping $SUBMODULE_NAME: Not present in $OLD_TAG"
+        echo "⚠️ Skipping $SUBMODULE_NAME: Not present in '"$OLD_TAG"'"
     else
         NEW_COMMIT=$(git rev-parse HEAD)
         SUBMODULE_URL="'"$GITHUB_URL"'/$SUBMODULE_PATH"
