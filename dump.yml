@@ -1,48 +1,56 @@
-#!/bin/bash
+name: Submodule Changelog
 
-# Ensure both tags are provided
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 <old_tag> <new_tag>"
-    exit 1
-fi
+on:
+  workflow_dispatch:
+    inputs:
+      old_tag:
+        description: 'Old Tag (e.g., v1.0.0)'
+        required: true
+      new_tag:
+        description: 'New Tag (e.g., v1.1.0)'
+        required: true
 
-OLD_TAG=$1
-NEW_TAG=$2
-GITHUB_URL="https://github.com/YOUR_ORG/YOUR_REPO"
+jobs:
+  compare-submodules:
+    runs-on: ubuntu-latest
 
-echo "Generating changelog links for submodules between $OLD_TAG and $NEW_TAG..."
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensure we fetch all tags and history
+          submodules: true  # Fetch submodules
 
-# Get commit messages in the main repository
-echo -e "\n### Main Repository Changes ###"
-echo "$GITHUB_URL/compare/$OLD_TAG...$NEW_TAG"
+      - name: Generate Submodule Changelog
+        run: |
+          OLD_TAG=${{ github.event.inputs.old_tag }}
+          NEW_TAG=${{ github.event.inputs.new_tag }}
+          GITHUB_URL="https://github.com/${{ github.repository }}"
 
-# Store submodule paths in a temporary file
-git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
+          echo "Generating changelog links for submodules between $OLD_TAG and $NEW_TAG..."
 
-# Loop through submodules
-while IFS= read -r SUBMODULE_PATH; do
-    echo -e "\n#### Submodule: $SUBMODULE_PATH ####"
+          echo -e "\n### Main Repository Changes ###"
+          echo "$GITHUB_URL/compare/$OLD_TAG...$NEW_TAG"
 
-    # Get the commit hash of the submodule from the main repository at OLD_TAG
-    OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk '{print $3}')
+          git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
 
-    # Debugging output
-    echo "DEBUG: OLD_COMMIT for $SUBMODULE_PATH: $OLD_COMMIT"
+          while IFS= read -r SUBMODULE_PATH; do
+              echo -e "\n#### Submodule: $SUBMODULE_PATH ####"
 
-    if [ -z "$OLD_COMMIT" ]; then
-        echo "⚠️ Skipping $SUBMODULE_PATH: Not present in $OLD_TAG"
-    else
-        # Ensure commit exists in the local repo
-        if ! git rev-parse "$OLD_COMMIT" >/dev/null 2>&1; then
-            echo "⚠️ OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'."
-        else
-            # Get the latest commit in the submodule
-            NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
-            SUBMODULE_URL="'"$GITHUB_URL"'/$SUBMODULE_PATH"
-            echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
-        fi
-    fi
-done < submodules_list.txt
+              OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk '{print $3}')
+              echo "DEBUG: OLD_COMMIT for $SUBMODULE_PATH: $OLD_COMMIT"
 
-# Clean up temp file
-rm -f submodules_list.txt
+              if [ -z "$OLD_COMMIT" ]; then
+                  echo "⚠️ Skipping $SUBMODULE_PATH: Not present in $OLD_TAG"
+              else
+                  if ! git rev-parse "$OLD_COMMIT" >/dev/null 2>&1; then
+                      echo "⚠️ OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'."
+                  else
+                      NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
+                      SUBMODULE_URL="$GITHUB_URL/tree/main/$SUBMODULE_PATH"
+                      echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
+                  fi
+              fi
+          done < submodules_list.txt
+
+          rm -f submodules_list.txt
