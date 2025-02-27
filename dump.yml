@@ -38,15 +38,23 @@ jobs:
 
           git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
 
-          while IFS= read -r SUBMODULE_PATH; do
-              echo "### $SUBMODULE_PATH" >> $CHANGELOG_FILE
+          SUBMODULES_CHANGED=0
 
+          while IFS= read -r SUBMODULE_PATH; do
               OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk '{print $3}')
               NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
 
               echo "DEBUG: OLD_COMMIT for $SUBMODULE_PATH: $OLD_COMMIT"
               echo "DEBUG: NEW_COMMIT for $SUBMODULE_PATH: $NEW_COMMIT"
 
+              # Skip submodules if they are unchanged
+              if [ "$OLD_COMMIT" == "$NEW_COMMIT" ]; then
+                  echo "Skipping $SUBMODULE_PATH - No changes"
+                  continue
+              fi
+
+              echo "### $SUBMODULE_PATH" >> $CHANGELOG_FILE
+              
               if [ -z "$OLD_COMMIT" ]; then
                   echo "**⚠️ Skipping:** Not present in $OLD_TAG" >> $CHANGELOG_FILE
               else
@@ -60,6 +68,7 @@ jobs:
                       SUBMODULE_REPO="https://github.com/devsecops/$SUBMODULE_NAME"
 
                       echo "[Compare Changes]($SUBMODULE_REPO/compare/$OLD_COMMIT...$NEW_COMMIT)" >> $CHANGELOG_FILE
+                      SUBMODULES_CHANGED=1
                   fi
               fi
               echo "" >> $CHANGELOG_FILE
@@ -67,7 +76,13 @@ jobs:
 
           rm -f submodules_list.txt
 
+          if [ "$SUBMODULES_CHANGED" -eq 0 ]; then
+              echo "No submodule changes detected. Skipping changelog upload."
+              rm -f $CHANGELOG_FILE
+          fi
+
       - name: Upload Changelog as Artifact
+        if: success() && hashFiles('submodule_changelog.md') != ''
         uses: actions/upload-artifact@v3
         with:
           name: submodule-changelog
