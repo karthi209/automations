@@ -12,14 +12,27 @@ def extract_version_from_filename(file_path):
     return f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match else "unknown"
 
 def compare_versions(prod_data, latest_data):
-    changes = []
-    
-    for key, old_version in prod_data.items():
-        new_version = latest_data.get(key, "0.0.0")
-        if old_version != new_version:
-            changes.append(f"{key}: {old_version} >> {new_version}")
-    
-    return "\n".join(changes)
+    changes = DeepDiff(prod_data, latest_data, ignore_order=True, view="tree")
+
+    changes_list = []
+
+    # Handle key-value changes
+    for change in changes.get("values_changed", []):
+        key = change.path()
+        old_value = change.t1
+        new_value = change.t2
+        changes_list.append(f"{key}: {old_value} >> {new_value}")
+
+    # Handle added and removed keys
+    for change in changes.get("dictionary_item_added", []):
+        key = change.path()
+        changes_list.append(f"Added: {key} -> {latest_data.get(key.strip('root'))}")
+
+    for change in changes.get("dictionary_item_removed", []):
+        key = change.path()
+        changes_list.append(f"Removed: {key} -> {prod_data.get(key.strip('root'))}")
+
+    return "\n".join(changes_list)
 
 def generate_report(prod_file, latest_file, output_file):
     prod_data = load_json(prod_file)
@@ -41,27 +54,3 @@ image version: {prod_version} >> {latest_version}
 {version_diff}
 
 *********** End of Changes *********************
-```
-
-## {latest_version} Full Image State (latest)
-```json
-{json.dumps(latest_data, indent=4)}
-```
-
-"""
-    
-    with open(output_file, 'w') as file:
-        file.write(report)
-    
-    print(f"Report generated and saved to {output_file}")
-
-if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python compare_reports.py <prod_json> <latest_json> <output_md>")
-        sys.exit(1)
-    
-    prod_json = sys.argv[1]
-    latest_json = sys.argv[2]
-    output_md = sys.argv[3]
-    
-    generate_report(prod_json, latest_json, output_md)
