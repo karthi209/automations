@@ -16,8 +16,11 @@ echo "Generating changelog links for submodules between $OLD_TAG and $NEW_TAG...
 echo -e "\n### Main Repository Changes ###"
 echo "$GITHUB_URL/compare/$OLD_TAG...$NEW_TAG"
 
-# Loop through submodules and generate links
-while read -r SUBMODULE_PATH; do
+# Store submodule paths in a temporary file
+git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
+
+# Loop through submodules
+while IFS= read -r SUBMODULE_PATH; do
     echo -e "\n#### Submodule: $SUBMODULE_PATH ####"
 
     # Get the commit hash of the submodule from the main repository at OLD_TAG
@@ -39,4 +42,7 @@ while read -r SUBMODULE_PATH; do
             echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
         fi
     fi
-done < <(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+done < submodules_list.txt
+
+# Clean up temp file
+rm -f submodules_list.txt
