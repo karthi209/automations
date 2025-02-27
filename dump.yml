@@ -54,3 +54,26 @@ image version: {prod_version} >> {latest_version}
 {version_diff}
 
 *********** End of Changes *********************
+```
+
+## {latest_version} Full Image State (latest)
+```json
+{json.dumps(latest_data, indent=4)}
+```
+"""
+    
+    with open(output_file, 'w') as file:
+        file.write(report)
+    
+    print(f"Report generated and saved to {output_file}")
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Usage: python compare_reports.py <prod_json> <latest_json> <output_md>")
+        sys.exit(1)
+    
+    prod_json = sys.argv[1]
+    latest_json = sys.argv[2]
+    output_md = sys.argv[3]
+    
+    generate_report(prod_json, latest_json, output_md)
