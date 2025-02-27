@@ -8,32 +8,35 @@ def load_json(file_path):
         return json.load(file)
 
 def extract_version_from_filename(file_path):
-    match = re.search(r'(\d+)_(\d+)_(\d+)\.json$', file_path)
-    return f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match else "unknown"
+    match = re.search(r'\d+_\d+_\d+', file_path)
+    return match.group(0).replace('_', '.') if match else "unknown"
 
 def clean_key_path(path):
     """Extracts key name from DeepDiff path notation."""
-    return path.replace("root['", "").replace("']", "")
+    return re.sub(r"root\['(.*?)'\]", r"\1", path)
 
 def compare_versions(prod_data, latest_data):
     changes = DeepDiff(prod_data, latest_data, ignore_order=True, view="tree")
     changes_list = []
 
     # Handle key-value changes
-    for path, change in changes.get("values_changed", {}).items():
-        key = clean_key_path(path)
-        old_value = change['old_value']
-        new_value = change['new_value']
-        changes_list.append(f"{key}:\n    - Old: {old_value}\n    - New: {new_value}\n")
+    if "values_changed" in changes:
+        for change in changes["values_changed"]:
+            key = clean_key_path(change.path())
+            old_value = change.t1
+            new_value = change.t2
+            changes_list.append(f"{key}:\n    - Old: {old_value}\n    - New: {new_value}\n")
 
     # Handle added and removed keys
-    for path in changes.get("dictionary_item_added", {}):
-        key = clean_key_path(path)
-        changes_list.append(f"Added: {key}\n    - New: {latest_data.get(key, 'N/A')}\n")
+    if "dictionary_item_added" in changes:
+        for change in changes["dictionary_item_added"]:
+            key = clean_key_path(change.path())
+            changes_list.append(f"Added: {key}\n    - New: {latest_data.get(key, 'N/A')}\n")
 
-    for path in changes.get("dictionary_item_removed", {}):
-        key = clean_key_path(path)
-        changes_list.append(f"Removed: {key}\n    - Old: {prod_data.get(key, 'N/A')}\n")
+    if "dictionary_item_removed" in changes:
+        for change in changes["dictionary_item_removed"]:
+            key = clean_key_path(change.path())
+            changes_list.append(f"Removed: {key}\n    - Old: {prod_data.get(key, 'N/A')}\n")
 
     return "\n".join(changes_list)
 
