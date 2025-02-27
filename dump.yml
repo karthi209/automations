@@ -17,18 +17,21 @@ echo -e "\n### Main Repository Changes ###"
 echo "$GITHUB_URL/compare/$OLD_TAG...$NEW_TAG"
 
 # Loop through submodules and generate links
-git submodule foreach --quiet '
+git submodule foreach --quiet --recursive '
     SUBMODULE_NAME=$name
     SUBMODULE_PATH=$path
     echo -e "\n#### Submodule: $SUBMODULE_NAME ($SUBMODULE_PATH) ####"
 
     # Get the commit hash of the submodule from the main repository at OLD_TAG
-    OLD_COMMIT=$(git ls-tree '"$OLD_TAG"' "$SUBMODULE_PATH" 2>/dev/null | awk "{print \$3}")
+    OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk "{print \$3}")
 
     if [ -z "$OLD_COMMIT" ]; then
-        echo "⚠️ Skipping $SUBMODULE_NAME: Not present in '"$OLD_TAG"'"
+        echo "⚠️ Skipping $SUBMODULE_NAME: Not present in $OLD_TAG"
     else
-        NEW_COMMIT=$(git rev-parse HEAD)
+        # Get the latest commit in the submodule
+        NEW_COMMIT=$(cd "$SUBMODULE_PATH" && git rev-parse HEAD)
+
+        # Generate compare link
         SUBMODULE_URL="'"$GITHUB_URL"'/$SUBMODULE_PATH"
         echo "$SUBMODULE_URL/compare/$OLD_COMMIT...$NEW_COMMIT"
     fi
