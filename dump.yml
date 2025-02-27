@@ -18,8 +18,8 @@ jobs:
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Ensure we fetch all tags and history
-          submodules: true  # Fetch submodules
+          fetch-depth: 0  # Fetch all history and tags
+          submodules: true  # Ensure we get submodules
 
       - name: Generate Submodule Changelog
         run: |
@@ -42,7 +42,10 @@ jobs:
               echo "### $SUBMODULE_PATH" >> $CHANGELOG_FILE
 
               OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk '{print $3}')
+              NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
+
               echo "DEBUG: OLD_COMMIT for $SUBMODULE_PATH: $OLD_COMMIT"
+              echo "DEBUG: NEW_COMMIT for $SUBMODULE_PATH: $NEW_COMMIT"
 
               if [ -z "$OLD_COMMIT" ]; then
                   echo "**⚠️ Skipping:** Not present in $OLD_TAG" >> $CHANGELOG_FILE
@@ -50,15 +53,13 @@ jobs:
                   if ! git rev-parse "$OLD_COMMIT" >/dev/null 2>&1; then
                       echo "**⚠️ Error:** OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'." >> $CHANGELOG_FILE
                   else
-                      NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
-
-                      # Extract submodule repo name from its path
+                      # Extract submodule repo name
                       SUBMODULE_NAME=$(basename "$SUBMODULE_PATH")
 
-                      # Construct the correct URL for the submodule
+                      # Construct submodule repo URL
                       SUBMODULE_REPO="https://github.com/devsecops/$SUBMODULE_NAME"
 
-                      echo "[View Commit]($SUBMODULE_REPO/tree/$NEW_COMMIT)" >> $CHANGELOG_FILE
+                      echo "[Compare Changes]($SUBMODULE_REPO/compare/$OLD_COMMIT...$NEW_COMMIT)" >> $CHANGELOG_FILE
                   fi
               fi
               echo "" >> $CHANGELOG_FILE
