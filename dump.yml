@@ -1,11 +1,48 @@
-{
-  "java_list": {
-    "command": "update-alternatives --query java | grep -E 'Alternative:' | awk '{print NR\" -> \"$2}'"
-  },
-  "java_version": {
-    "command": "java -version 2>&1 | awk -F '\"' 'NR==1{print $2}'"
-  },
-  "set_java_17": {
-    "command": "sudo update-alternatives --set java $(update-alternatives --query java | grep 'Alternative: /usr/lib/jvm/java-17-openjdk' | awk '{print $2}' | sort -V | tail -n1)"
-  }
-}
+import json
+import subprocess
+
+# Path to the JSON file
+json_file = "/path/to/your.json"  # Update this with the actual JSON file path
+
+# Load JSON data
+try:
+    with open(json_file, "r") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print("\033[91m❌ Error: JSON file not found at {}\033[0m".format(json_file))  # Red text
+    exit(1)
+except json.JSONDecodeError:
+    print("\033[91m❌ Error: Invalid JSON format in {}\033[0m".format(json_file))  # Red text
+    exit(1)
+
+# Header
+print("\n\033[96m🛠  Java Versions\033[0m")  # Cyan bold title
+print("=" * 40)
+
+# Iterate over each command in JSON
+for package, info in data.items():
+    cmd = info.get("command", "")
+
+    if not cmd:
+        print(f"\033[93m{package:<15} ⚠ No command found\033[0m")  # Yellow warning
+        continue
+
+    try:
+        # Execute command and capture output
+        result = subprocess.run(cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output = result.stdout.strip()
+
+        # Special formatting for "java_list"
+        if package == "java_list":
+            java_versions = output.split("\n")
+            output = "\n".join(f"  {i+1}. {version}" for i, version in enumerate(java_versions))
+
+    except subprocess.CalledProcessError:
+        output = "\033[91m❌ Failed\033[0m"  # Red failure
+
+    # Print results in a structured way
+    print(f"\033[94m{package:<15} \033[92m{output}\033[0m")  # Blue tool, Green version
+
+# Final message
+print("=" * 40)
+print("\033[92m✅ Check completed.\033[0m\n")  # Green success message
