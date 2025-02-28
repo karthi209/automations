@@ -13,8 +13,11 @@ echo "---------------------------------"
 # Process each command in the JSON file
 jq -r 'to_entries[] | "\(.key)@@\(.value.command)"' "$JSON_FILE" | while IFS='@@' read -r name cmd; do
     echo -n "$name: "
-    result=$(bash -c "$cmd" 2>/dev/null)  # Execute command in a subshell
+    
+    # Run command safely
+    result=$(eval "$cmd" 2>/dev/null)
 
+    # Handle empty or failed command execution
     if [[ -z "$result" ]]; then
         echo "Command failed or package not found"
     else
