@@ -1,38 +1,43 @@
-#!/bin/bash
+import json
+import subprocess
 
-JSON_FILE="/path/to/your.json"  # Update this with the actual JSON file path
+# Path to the JSON file
+json_file = "/path/to/your.json"  # Update this with the actual JSON file path
 
-if [[ ! -f "$JSON_FILE" ]]; then
-    echo "Error: JSON file not found at $JSON_FILE"
-    exit 1
-fi
+# Load JSON data
+try:
+    with open(json_file, "r") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print(f"Error: JSON file not found at {json_file}")
+    exit(1)
+except json.JSONDecodeError:
+    print(f"Error: Invalid JSON format in {json_file}")
+    exit(1)
 
-echo "Executing version checks..."
-echo "---------------------------------"
+print("Executing version checks...")
+print("---------------------------------")
 
-# Process each command in the JSON file
-jq -r 'to_entries[] | "\(.key)\n\(.value.command)"' "$JSON_FILE" | while read -r name; do
-    read -r cmd
+# Iterate over each command in the JSON
+for package, info in data.items():
+    cmd = info.get("command", "")
 
-    # Trim spaces (if any)
-    name=$(echo "$name" | xargs)
-    cmd=$(echo "$cmd" | xargs)
+    if not cmd:
+        print(f"{package}: No command found")
+        continue
 
-    # Properly wrap the extracted command in quotes
-    echo "Running check for: $name"
-    echo "Executing: $cmd"
+    print(f"Running check for: {package}")
+    print(f"Executing: {cmd}")
 
-    # Run command safely
-    result=$(bash -c "$cmd" 2>&1)
+    try:
+        # Execute command and capture output
+        result = subprocess.run(cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output = result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        output = f"Command failed: {e.stderr.strip()}"
 
-    # Handle empty or failed command execution
-    if [[ -z "$result" ]]; then
-        echo "$name: Command failed or package not found"
-    else
-        echo "$name: $result"
-    fi
+    # Display result
+    print(f"{package}: {output}")
+    print("---------------------------------")
 
-    echo "---------------------------------"
-done
-
-echo "Done."
+print("Done.")
