@@ -1,6 +1,5 @@
 import json
 import subprocess
-import re
 
 # Path to the JSON file
 json_file = "/path/to/your.json"  # Update this with the actual JSON file path
@@ -17,8 +16,8 @@ except json.JSONDecodeError:
     exit(1)
 
 # Header
-print("\n\033[96m🛠  Java Versions\033[0m")  # Cyan bold title
-print("=" * 50)
+print("\n\033[96m🛠  System Package Versions\033[0m")  # Cyan bold title
+print("=" * 40)
 
 # Iterate over each command in JSON
 for package, info in data.items():
@@ -31,37 +30,13 @@ for package, info in data.items():
     try:
         # Execute command and capture output
         result = subprocess.run(cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = result.stdout.strip()
-
-        # Special formatting for "java_list"
-        if package == "java_list":
-            java_versions = output.split("\n")
-            seen = set()  # Track seen entries to remove duplicates
-
-            print(f"\033[94m{package:<15}\033[92m")  # Blue tool name
-
-            index = 1
-            for line in java_versions:
-                match = re.match(r"(.+?)\s+auto\s+(.+)", line)
-                if match:
-                    java_name, java_path = match.groups()
-
-                    # Keep if it's "java" OR does NOT contain "_openjdk"
-                    if java_name == "java" or "_openjdk" not in java_name:
-                        if java_name not in seen:
-                            seen.add(java_name)
-                            print(f"  {index}. {java_name} -> {java_path}")
-                            index += 1
-
-            print("\033[0m", end="")  # Reset color
-            continue  # Skip default printing below
-
+        output = result.stdout.strip() or "\033[91mN/A\033[0m"  # Red if no output
     except subprocess.CalledProcessError:
         output = "\033[91m❌ Failed\033[0m"  # Red failure
 
-    # Print results in a structured way
-    print(f"\033[94m{package:<15} \033[92m{output}\033[0m")  # Blue tool, Green version
+    # Print results with indentation for the version
+    print(f"\033[94m{package:<15} \033[92m→   {output}\033[0m")  # Indented version display
 
 # Final message
-print("=" * 50)
+print("=" * 40)
 print("\033[92m✅ Check completed.\033[0m\n")  # Green success message
