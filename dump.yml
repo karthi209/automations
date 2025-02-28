@@ -1,6 +1,6 @@
 #!/bin/bash
 
-JSON_FILE="/path/to/your.json"  # Update with the actual JSON file path
+JSON_FILE="/path/to/your.json"  # Update this with the actual JSON file path
 
 if [[ ! -f "$JSON_FILE" ]]; then
     echo "Error: JSON file not found at $JSON_FILE"
@@ -18,15 +18,12 @@ jq -r 'to_entries[] | "\(.key)\n\(.value.command)"' "$JSON_FILE" | while read -r
     name=$(echo "$name" | xargs)
     cmd=$(echo "$cmd" | xargs)
 
-    # Ensure the command is properly quoted
-    safe_cmd=$(printf "%q" "$cmd")
-
-    # Debug: Show command before running
+    # Properly wrap the extracted command in quotes
     echo "Running check for: $name"
     echo "Executing: $cmd"
 
     # Run command safely
-    result=$(bash -c "$safe_cmd" 2>&1)
+    result=$(bash -c "$cmd" 2>&1)
 
     # Handle empty or failed command execution
     if [[ -z "$result" ]]; then
