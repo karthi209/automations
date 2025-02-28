@@ -9,35 +9,34 @@ try:
     with open(json_file, "r") as f:
         data = json.load(f)
 except FileNotFoundError:
-    print(f"Error: JSON file not found at {json_file}")
+    print("\033[91m❌ Error: JSON file not found at {}\033[0m".format(json_file))  # Red text
     exit(1)
 except json.JSONDecodeError:
-    print(f"Error: Invalid JSON format in {json_file}")
+    print("\033[91m❌ Error: Invalid JSON format in {}\033[0m".format(json_file))  # Red text
     exit(1)
 
-print("Executing version checks...")
-print("---------------------------------")
+# Header
+print("\n\033[96m🛠  System Package Versions\033[0m")  # Cyan bold title
+print("=" * 40)
 
-# Iterate over each command in the JSON
+# Iterate over each command in JSON
 for package, info in data.items():
     cmd = info.get("command", "")
 
     if not cmd:
-        print(f"{package}: No command found")
+        print(f"\033[93m{package:<15} ⚠ No command found\033[0m")  # Yellow warning
         continue
-
-    print(f"Running check for: {package}")
-    print(f"Executing: {cmd}")
 
     try:
         # Execute command and capture output
         result = subprocess.run(cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        output = f"Command failed: {e.stderr.strip()}"
+        output = result.stdout.strip() or "\033[91mN/A\033[0m"  # Red if no output
+    except subprocess.CalledProcessError:
+        output = "\033[91m❌ Failed\033[0m"  # Red failure
 
-    # Display result
-    print(f"{package}: {output}")
-    print("---------------------------------")
+    # Print results in a structured way
+    print(f"\033[94m{package:<15} \033[92m{output}\033[0m")  # Blue tool, Green version
 
-print("Done.")
+# Final message
+print("=" * 40)
+print("\033[92m✅ Check completed.\033[0m\n")  # Green success message
