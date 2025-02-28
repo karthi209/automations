@@ -46,7 +46,7 @@ for package, info in data.items():
                 if match:
                     java_name, java_path = match.groups()
 
-                    # Keep only 'java' or entries WITHOUT '_openjdk'
+                    # Keep if it's "java" OR does NOT contain "_openjdk"
                     if java_name == "java" or "_openjdk" not in java_name:
                         if java_name not in seen:
                             seen.add(java_name)
