@@ -12,11 +12,16 @@ echo "---------------------------------"
 
 # Process each command in the JSON file
 jq -r 'to_entries[] | "\(.key)@@\(.value.command)"' "$JSON_FILE" | while IFS='@@' read -r name cmd; do
+    # Trim leading/trailing whitespace (if any)
+    name=$(echo "$name" | xargs)
+    cmd=$(echo "$cmd" | xargs)
+
+    # Debug: Show command before running
     echo "Running check for: $name"
-    echo "Executing: $cmd"  # Debugging: Show command before running
+    echo "Executing: $cmd"
 
     # Run command and capture result
-    result=$(bash -c "$cmd" 2>&1)  
+    result=$(bash -c "$cmd" 2>&1)
 
     # Handle empty or failed command execution
     if [[ -z "$result" ]]; then
