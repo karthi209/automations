@@ -46,11 +46,12 @@ for package, info in data.items():
                 if match:
                     java_name, java_path = match.groups()
 
-                    # Keep only `_openjdk` versions and remove duplicates
-                    if "_openjdk" in java_name and java_name not in seen:
-                        seen.add(java_name)
-                        print(f"  {index}. {java_name} -> {java_path}")
-                        index += 1
+                    # Keep only 'java' or entries WITHOUT '_openjdk'
+                    if java_name == "java" or "_openjdk" not in java_name:
+                        if java_name not in seen:
+                            seen.add(java_name)
+                            print(f"  {index}. {java_name} -> {java_path}")
+                            index += 1
 
             print("\033[0m", end="")  # Reset color
             continue  # Skip default printing below
