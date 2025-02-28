@@ -35,7 +35,11 @@ for package, info in data.items():
         # Special formatting for "java_list"
         if package == "java_list":
             java_versions = output.split("\n")
-            output = "\n".join(f"  {i+1}. {version}" for i, version in enumerate(java_versions))
+            print(f"\033[94m{package:<15}\033[92m")  # Blue tool name
+            for i, version in enumerate(java_versions, start=1):
+                print(f"  {i}. {version}")  # Numbered list
+            print("\033[0m", end="")  # Reset color
+            continue  # Skip default printing below
 
     except subprocess.CalledProcessError:
         output = "\033[91m❌ Failed\033[0m"  # Red failure
