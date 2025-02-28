@@ -1,45 +1,49 @@
 #!/bin/bash
 
 # Output file
-OUTPUT_FILE="installed_packages_$(date +%Y%m%d_%H%M%S).txt"
-echo "Generating package list..." > "$OUTPUT_FILE"
+OUTPUT_FILE="installed_user_packages_$(date +%Y%m%d_%H%M%S).txt"
+echo "Generating user-installed package list..." > "$OUTPUT_FILE"
 
-# Temporary file for unique package storage
+# Temporary file for storing package names
 TEMP_FILE=$(mktemp)
 
-# Function to collect and append package names uniquely
+# Function to collect and append unique package names
 add_to_list() {
     while read -r pkg; do
         echo "$pkg" >> "$TEMP_FILE"
     done
 }
 
-echo -e "\n===== RPM Packages =====" >> "$OUTPUT_FILE"
+# === RPM Packages (Filtering System Packages) ===
+echo -e "\n===== RPM User-Installed Packages =====" >> "$OUTPUT_FILE"
 if command -v rpm &>/dev/null; then
-    rpm -qa | sort | add_to_list
+    rpm -qa --queryformat '%{NAME} %{INSTALLTIME}\n' | sort -k2 -n | awk '{print $1}' | add_to_list
 else
     echo "RPM not found" >> "$OUTPUT_FILE"
 fi
 
-echo -e "\n===== DNF Packages =====" >> "$OUTPUT_FILE"
+# === DNF User-Installed Packages ===
+echo -e "\n===== DNF User-Installed Packages =====" >> "$OUTPUT_FILE"
 if command -v dnf &>/dev/null; then
-    dnf list installed | awk '{print $1}' | tail -n +2 | sort | add_to_list
+    dnf history userinstalled | awk '{print $1}' | tail -n +3 | sort | uniq | add_to_list
 else
     echo "DNF not found" >> "$OUTPUT_FILE"
 fi
 
-echo -e "\n===== YUM Packages =====" >> "$OUTPUT_FILE"
+# === YUM User-Installed Packages ===
+echo -e "\n===== YUM User-Installed Packages =====" >> "$OUTPUT_FILE"
 if command -v yum &>/dev/null; then
-    yum list installed | awk '{print $1}' | tail -n +2 | sort | add_to_list
+    yum list installed | grep '@' | awk '{print $1}' | sort | uniq | add_to_list
 else
     echo "YUM not found" >> "$OUTPUT_FILE"
 fi
 
-echo -e "\n===== PIP Packages =====" >> "$OUTPUT_FILE"
+# === PIP User-Installed Packages ===
+echo -e "\n===== PIP User-Installed Packages =====" >> "$OUTPUT_FILE"
 if command -v pip &>/dev/null; then
-    pip list --format=columns | tail -n +3 | awk '{print $1}' | sort | add_to_list
+    pip list --not-required --format=freeze | cut -d= -f1 | sort | add_to_list
 elif command -v pip3 &>/dev/null; then
-    pip3 list --format=columns | tail -n +3 | awk '{print $1}' | sort | add_to_list
+    pip3 list --not-required --format=freeze | cut -d= -f1 | sort | add_to_list
 else
     echo "PIP not found" >> "$OUTPUT_FILE"
 fi
@@ -48,4 +52,4 @@ fi
 sort -u "$TEMP_FILE" >> "$OUTPUT_FILE"
 rm -f "$TEMP_FILE"
 
-echo "Package list saved to $OUTPUT_FILE"
+echo "User-installed package list saved to $OUTPUT_FILE"
