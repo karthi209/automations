@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Output file
-OUTPUT_FILE="installed_user_packages_$(date +%Y%m%d_%H%M%S).txt"
-echo "Generating user-installed package list..." > "$OUTPUT_FILE"
+echo "Generating user-installed package list..."
 
 # Temporary file for storing package names
 TEMP_FILE=$(mktemp)
@@ -15,41 +13,41 @@ add_to_list() {
 }
 
 # === RPM Packages (Filtering System Packages) ===
-echo -e "\n===== RPM User-Installed Packages =====" >> "$OUTPUT_FILE"
+echo -e "\n===== RPM User-Installed Packages ====="
 if command -v rpm &>/dev/null; then
     rpm -qa --queryformat '%{NAME} %{INSTALLTIME}\n' | sort -k2 -n | awk '{print $1}' | add_to_list
 else
-    echo "RPM not found" >> "$OUTPUT_FILE"
+    echo "RPM not found"
 fi
 
 # === DNF User-Installed Packages ===
-echo -e "\n===== DNF User-Installed Packages =====" >> "$OUTPUT_FILE"
+echo -e "\n===== DNF User-Installed Packages ====="
 if command -v dnf &>/dev/null; then
     dnf history userinstalled | awk '{print $1}' | tail -n +3 | sort | uniq | add_to_list
 else
-    echo "DNF not found" >> "$OUTPUT_FILE"
+    echo "DNF not found"
 fi
 
 # === YUM User-Installed Packages ===
-echo -e "\n===== YUM User-Installed Packages =====" >> "$OUTPUT_FILE"
+echo -e "\n===== YUM User-Installed Packages ====="
 if command -v yum &>/dev/null; then
     yum list installed | grep '@' | awk '{print $1}' | sort | uniq | add_to_list
 else
-    echo "YUM not found" >> "$OUTPUT_FILE"
+    echo "YUM not found"
 fi
 
 # === PIP User-Installed Packages ===
-echo -e "\n===== PIP User-Installed Packages =====" >> "$OUTPUT_FILE"
+echo -e "\n===== PIP User-Installed Packages ====="
 if command -v pip &>/dev/null; then
     pip list --not-required --format=freeze | cut -d= -f1 | sort | add_to_list
 elif command -v pip3 &>/dev/null; then
     pip3 list --not-required --format=freeze | cut -d= -f1 | sort | add_to_list
 else
-    echo "PIP not found" >> "$OUTPUT_FILE"
+    echo "PIP not found"
 fi
 
-# Remove duplicates and save the final list
-sort -u "$TEMP_FILE" >> "$OUTPUT_FILE"
+# Remove duplicates and display the final list
+sort -u "$TEMP_FILE"
 rm -f "$TEMP_FILE"
 
-echo "User-installed package list saved to $OUTPUT_FILE"
+echo "Done."
