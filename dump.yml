@@ -1,52 +1,9 @@
-import json
-import subprocess
-
-# Path to the JSON file
-json_file = "/path/to/your.json"  # Update this with the actual JSON file path
-
-# Load JSON data
-try:
-    with open(json_file, "r") as f:
-        data = json.load(f)
-except FileNotFoundError:
-    print("\033[91m❌ Error: JSON file not found at {}\033[0m".format(json_file))  # Red text
-    exit(1)
-except json.JSONDecodeError:
-    print("\033[91m❌ Error: Invalid JSON format in {}\033[0m".format(json_file))  # Red text
-    exit(1)
-
-# Header
-print("\n\033[96m🛠  Java Versions\033[0m")  # Cyan bold title
-print("=" * 40)
-
-# Iterate over each command in JSON
-for package, info in data.items():
-    cmd = info.get("command", "")
-
-    if not cmd:
-        print(f"\033[93m{package:<15} ⚠ No command found\033[0m")  # Yellow warning
-        continue
-
-    try:
-        # Execute command and capture output
-        result = subprocess.run(cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = result.stdout.strip()
-
-        # Special formatting for "java_list"
-        if package == "java_list":
-            java_versions = output.split("\n")
-            print(f"\033[94m{package:<15}\033[92m")  # Blue tool name
-            for i, version in enumerate(java_versions, start=1):
-                print(f"  {i}. {version}")  # Numbered list
-            print("\033[0m", end="")  # Reset color
-            continue  # Skip default printing below
-
-    except subprocess.CalledProcessError:
-        output = "\033[91m❌ Failed\033[0m"  # Red failure
-
-    # Print results in a structured way
-    print(f"\033[94m{package:<15} \033[92m{output}\033[0m")  # Blue tool, Green version
-
-# Final message
-print("=" * 40)
-print("\033[92m✅ Check completed.\033[0m\n")  # Green success message
+java-default    17.0.14
+java_list         1. java_sdk_1.8.0             auto    /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.432.b06-2.el8.x86_64
+  2. java_sdk_1.8.0_openjdk     auto    /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.432.b06-2.el8.x86_64
+  3. java_sdk_17                auto    /usr/lib/jvm/java-17-openjdk-17.0.14.0.7-3.el8.x86_64
+  4. java_sdk_17_openjdk        auto    /usr/lib/jvm/java-17-openjdk-17.0.14.0.7-3.el8.x86_64
+  5. java_sdk_21                auto    /usr/lib/jvm/java-21-openjdk-21.0.6.0.7-1.el8.x86_64
+  6. java_sdk_21_openjdk        auto    /usr/lib/jvm/java-21-openjdk-21.0.6.0.7-1.el8.x86_64
+  7. java_sdk_openjdk           auto    /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.432.b06-2.el8.x86_64
+node            18.20.6
