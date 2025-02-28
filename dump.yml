@@ -1,31 +1,26 @@
 #!/bin/bash
 
-JSON_FILE="/path/to/your.json"  # Update this with the actual path
+JSON_FILE="/path/to/your.json"  # Update this with the actual JSON file path
 
-# Check if jq is installed
-if ! command -v jq &>/dev/null; then
-    echo "Error: jq is not installed. Install it using: sudo dnf install jq -y"
-    exit 1
-fi
-
-# Check if JSON file exists
 if [[ ! -f "$JSON_FILE" ]]; then
     echo "Error: JSON file not found at $JSON_FILE"
     exit 1
 fi
 
 echo "Executing version checks..."
+echo "---------------------------------"
 
-# Extract and execute commands safely
+# Process each command in the JSON file
 jq -r 'to_entries[] | "\(.key)@@\(.value.command)"' "$JSON_FILE" | while IFS='@@' read -r name cmd; do
     echo -n "$name: "
-    
-    # Execute command and capture output/errors
-    output=$(bash -c "$cmd" 2>/dev/null)
+    result=$(bash -c "$cmd" 2>/dev/null)  # Execute command in a subshell
 
-    if [[ -n "$output" ]]; then
-        echo "$output"
+    if [[ -z "$result" ]]; then
+        echo "Command failed or package not found"
     else
-        echo "Command failed or not found"
+        echo "$result"
     fi
 done
+
+echo "---------------------------------"
+echo "Done."
