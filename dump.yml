@@ -1,89 +1,51 @@
-name: Submodule Changelog
+#!/bin/bash
 
-on:
-  workflow_dispatch:
-    inputs:
-      old_tag:
-        description: 'Old Tag (e.g., v1.0.0)'
-        required: true
-      new_tag:
-        description: 'New Tag (e.g., v1.1.0)'
-        required: true
+# Output file
+OUTPUT_FILE="installed_packages_$(date +%Y%m%d_%H%M%S).txt"
+echo "Generating package list..." > "$OUTPUT_FILE"
 
-jobs:
-  compare-submodules:
-    runs-on: ubuntu-latest
+# Temporary file for unique package storage
+TEMP_FILE=$(mktemp)
 
-    steps:
-      - name: Checkout repository with submodules
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch all history and tags
-          submodules: true  # Ensure we get submodules
+# Function to collect and append package names uniquely
+add_to_list() {
+    while read -r pkg; do
+        echo "$pkg" >> "$TEMP_FILE"
+    done
+}
 
-      - name: Generate Submodule Changelog
-        run: |
-          OLD_TAG=${{ github.event.inputs.old_tag }}
-          NEW_TAG=${{ github.event.inputs.new_tag }}
-          MAIN_REPO="https://github.com/devsecops/agent_build"
-          CHANGELOG_FILE="submodule_changelog.md"
+echo -e "\n===== RPM Packages =====" >> "$OUTPUT_FILE"
+if command -v rpm &>/dev/null; then
+    rpm -qa | sort | add_to_list
+else
+    echo "RPM not found" >> "$OUTPUT_FILE"
+fi
 
-          echo "# Submodule Changelog" > $CHANGELOG_FILE
-          echo "Comparing **$OLD_TAG** → **$NEW_TAG**" >> $CHANGELOG_FILE
-          echo "" >> $CHANGELOG_FILE
+echo -e "\n===== DNF Packages =====" >> "$OUTPUT_FILE"
+if command -v dnf &>/dev/null; then
+    dnf list installed | awk '{print $1}' | tail -n +2 | sort | add_to_list
+else
+    echo "DNF not found" >> "$OUTPUT_FILE"
+fi
 
-          echo "## Main Repository Changes" >> $CHANGELOG_FILE
-          echo "[$OLD_TAG...$NEW_TAG]($MAIN_REPO/compare/$OLD_TAG...$NEW_TAG)" >> $CHANGELOG_FILE
-          echo "" >> $CHANGELOG_FILE
+echo -e "\n===== YUM Packages =====" >> "$OUTPUT_FILE"
+if command -v yum &>/dev/null; then
+    yum list installed | awk '{print $1}' | tail -n +2 | sort | add_to_list
+else
+    echo "YUM not found" >> "$OUTPUT_FILE"
+fi
 
-          git config --file .gitmodules --get-regexp path | awk '{print $2}' > submodules_list.txt
+echo -e "\n===== PIP Packages =====" >> "$OUTPUT_FILE"
+if command -v pip &>/dev/null; then
+    pip list --format=columns | tail -n +3 | awk '{print $1}' | sort | add_to_list
+elif command -v pip3 &>/dev/null; then
+    pip3 list --format=columns | tail -n +3 | awk '{print $1}' | sort | add_to_list
+else
+    echo "PIP not found" >> "$OUTPUT_FILE"
+fi
 
-          SUBMODULES_CHANGED=0
+# Remove duplicates and save the final list
+sort -u "$TEMP_FILE" >> "$OUTPUT_FILE"
+rm -f "$TEMP_FILE"
 
-          while IFS= read -r SUBMODULE_PATH; do
-              OLD_COMMIT=$(git ls-tree "$OLD_TAG" -- "$SUBMODULE_PATH" 2>/dev/null | awk '{print $3}')
-              NEW_COMMIT=$(git rev-parse HEAD:"$SUBMODULE_PATH")
-
-              echo "DEBUG: OLD_COMMIT for $SUBMODULE_PATH: $OLD_COMMIT"
-              echo "DEBUG: NEW_COMMIT for $SUBMODULE_PATH: $NEW_COMMIT"
-
-              # Skip submodules if they are unchanged
-              if [ "$OLD_COMMIT" == "$NEW_COMMIT" ]; then
-                  echo "Skipping $SUBMODULE_PATH - No changes"
-                  continue
-              fi
-
-              echo "### $SUBMODULE_PATH" >> $CHANGELOG_FILE
-              
-              if [ -z "$OLD_COMMIT" ]; then
-                  echo "**⚠️ Skipping:** Not present in $OLD_TAG" >> $CHANGELOG_FILE
-              else
-                  if ! git rev-parse "$OLD_COMMIT" >/dev/null 2>&1; then
-                      echo "**⚠️ Error:** OLD_COMMIT ($OLD_COMMIT) not found locally. Try 'git fetch --recurse-submodules'." >> $CHANGELOG_FILE
-                  else
-                      # Extract submodule repo name
-                      SUBMODULE_NAME=$(basename "$SUBMODULE_PATH")
-
-                      # Construct submodule repo URL
-                      SUBMODULE_REPO="https://github.com/devsecops/$SUBMODULE_NAME"
-
-                      echo "[Compare Changes]($SUBMODULE_REPO/compare/$OLD_COMMIT...$NEW_COMMIT)" >> $CHANGELOG_FILE
-                      SUBMODULES_CHANGED=1
-                  fi
-              fi
-              echo "" >> $CHANGELOG_FILE
-          done < submodules_list.txt
-
-          rm -f submodules_list.txt
-
-          if [ "$SUBMODULES_CHANGED" -eq 0 ]; then
-              echo "No submodule changes detected. Skipping changelog upload."
-              rm -f $CHANGELOG_FILE
-          fi
-
-      - name: Upload Changelog as Artifact
-        if: success() && hashFiles('submodule_changelog.md') != ''
-        uses: actions/upload-artifact@v3
-        with:
-          name: submodule-changelog
-          path: submodule_changelog.md
+echo "Package list saved to $OUTPUT_FILE"
