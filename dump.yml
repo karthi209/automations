@@ -11,8 +11,10 @@ echo "Executing version checks..."
 echo "---------------------------------"
 
 # Process each command in the JSON file
-jq -r 'to_entries[] | "\(.key)@@\(.value.command)"' "$JSON_FILE" | while IFS='@@' read -r name cmd; do
-    # Trim leading/trailing whitespace (if any)
+jq -r 'to_entries[] | "\(.key)\n\(.value.command)"' "$JSON_FILE" | while read -r name; do
+    read -r cmd
+
+    # Trim spaces (if any)
     name=$(echo "$name" | xargs)
     cmd=$(echo "$cmd" | xargs)
 
