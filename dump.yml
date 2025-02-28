@@ -1,42 +1,355 @@
-import json
-import subprocess
+{
+  "java-default": {
+    "command": "java -version 2>&1 | awk -F '\"' '/version/ {print $2}'",
+    "type": "common"
+  },
+  "java_alternatives": {
+    "command": "update-alternatives --list | grep java",
+    "type": "common"
+  },
+  "node": {
+    "command": "node --version | awk '{print substr($0,2)}'",
+    "type": "common"
+  },
+  "python": {
+    "command": "python3.11 --version | awk '{print $2}'",
+    "type": "common"
+  },
+  "maven": {
+    "command": "mvn -version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "ant": {
+    "command": "ant -version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "gradle": {
+    "command": "gradle --version | grep 'Gradle' | awk '{print $4}' | sed 's/.$//'",
+    "type": "common"
+  },
+  "github-cli": {
+    "command": "gh --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "az-cli": {
+    "command": "az --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "ibmcloud-cli": {
+    "command": "ibmcloud -v | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "sqlcmd": {
+    "command": "sqlcmd -? | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "psql": {
+    "command": "psql --version | awk '{print $3}'",
+    "type": "common"
+  },
+  "yq": {
+    "command": "yq -V | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "openshift-cli": {
+    "command": "oc version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "sqlplus": {
+    "command": "sqlplus -V | awk 'NR==2' | awk '{print $3}'",
+    "type": "common"
+  },
+  "rsync": {
+    "command": "rsync --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "skopeo": {
+    "command": "skopeo --version | awk '{print $3}'",
+    "type": "common"
+  },
+  "checkmarx": {
+    "command": "cx version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "jfrog-cli": {
+    "command": "jf -v | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "databricks-cli": {
+    "command": "databricks --version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "twist-cli": {
+    "command": "twistcli --version | awk '{print $NF}'",
+    "type": "common"
+  },
+  "powershell": {
+    "command": "pwsh -v | awk '{print $NF}'",
+    "type": "common"
+  },
+  "nexusiq-cli": {
+    "command": "nexus-iq-cli -v | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "gettext": {
+    "command": "gettext --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "buildah": {
+    "command": "buildah version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "ansible": {
+    "command": "ansible --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "terraform": {
+    "command": "terraform --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "xlsxWriter": {
+    "command": "pip list | grep -i XlsxWriter | awk '{print $2}'",
+    "type": "common"
+  },
+  "git": {
+    "command": "git --version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "clover": {
+    "command": "jar xf /opt/clover/clover-4.5.0/lib/clover-4.5.0.jar  META-INF/MANIFEST.MF && cat META-INF/MANIFEST.MF | grep Implementation-Version | awk '{print $2}'",
+    "type": "common"
+  },
+  "mercurial": {
+    "command": "hg --version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "jproxy": {
+    "command": "java -jar /opt/jproxy/jproxy-1.0.jar | awk 'NR==10' | awk '{print $12}' | awk '{match($0, /[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "go": {
+    "command": "go version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "angular-cli": {
+    "command": "ng --version",
+    "type": "common"
+  },
+  "awx-cli": {
+    "command": "pip list | grep -i awx | awk '{print $2}'",
+    "type": "common"
+  },
+  "cosign": {
+    "command": "cosign version | awk 'NR==9' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "grunt": {
+    "command": "grunt --version | grep grunt-cli | awk '{print $NF}' | sed 's/^v//'",
+    "type": "common"
+  },
+  "dotnet": {
+    "command": "dotnet --version",
+    "type": "common"
+  },
+  "groovy": {
+    "command": "groovy -v | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "helm": {
+    "command": "helm version | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "kubelogin": {
+    "command": "kubelogin --version | head -n 2 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "kubectl": {
+    "command": "kubectl version | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "docker": {
+    "command": "docker --version | awk '{print $3}' | sed 's/,//'",
+    "type": "common"
+  },
+  "kubeseal": {
+    "command": "kubeseal --version | awk 'NR==1' | awk '{print $NF}'",
+    "type": "common"
+  },
+  "kubeval": {
+    "command": "kubeval --version  | grep Version | awk '{print $NF }'",
+    "type": "common"
+  },
+  "chrome": {
+    "command": "google-chrome --version | awk '{print $NF}'",
+    "type": "common"
+  },
+  "opa": {
+    "command": "opa version | awk 'NR==1' | awk '{print $2}'",
+    "type": "common"
+  },
+  "liquibase": {
+    "command": "liquibase -v | awk '/Liquibase Version:/{print $NF}'",
+    "type": "common"
+  },
+  "sonar-scanner": {
+    "command": "sonar-scanner --version | head -n 3 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "sonar-runner": {
+    "command": "sonar-runner --version | awk 'NR==1' | awk '{print $3}'",
+    "type": "common"
+  },
+  "tidelift-cli": {
+    "command": "tidelift version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "jmeter": {
+    "command": "jmeter --version | awk 'NR==9' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "jq": {
+    "command": "jq --version | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "sshpass": {
+    "command": "sshpass -V | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "unzip": {
+    "command": "unzip -V",
+    "type": "common"
+  },
+  "wget": {
+    "command": "wget -V | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "curl": {
+    "command": "curl -V | head -n 1 | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "xz": {
+    "command": "xz --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
 
-# Path to the JSON file
-json_file = "/path/to/your.json"  # Update this with the actual JSON file path
+  "binutils": {
+    "command": "rpm -q binutils | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'",
+    "type": "common"
+  },
+  "net-tools": {
+    "command": "rpm -q net-tools | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "iputils": {
+    "command": "rpm -q iputils | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "bind9.16-utils": {
+    "command": "rpm -q bind9.16-utils | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "bash": {
+    "command": "bash --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "screen": {
+    "command": "screen --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "openssl": {
+    "command": "openssl version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "procps": {
+    "command": "ps --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "tzdata": {
+    "command": "rpm -q tzdata | awk 'NR==1'"
+  },
+  "autoconf": {
+    "command": "autoconf --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "make": {
+    "command": "make --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "tar": {
+    "command": "tar --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "zip": {
+    "command": "zip --version | awk 'NR==2' | awk '{match($0, /[0-9]+.[0-9]/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "iptables": {
+    "command": "iptables --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "zlib-devel": {
+    "command": "rpm -q zlib-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "brotli-devel": {
+    "command": "rpm -q brotli-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "openssl-devel": {
+    "command": "rpm -q openssl-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "libuv-devel": {
+    "command": "rpm -q libuv-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "krb5-devel": {
+    "command": "rpm -q krb5-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "krb5-libs": {
+    "command": "rpm -q krb5-libs | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "krb5-pkinit": {
+    "command": "rpm -q krb5-libs | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "krb5-workstation": {
+    "command": "rpm -q krb5-workstation | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "glibc-langpack-en": {
+    "command": "rpm -q glibc-langpack-en | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "nc": {
+    "command": "nc --version"
+  },
+  "dnsutils": {
+    "command": "rpm -q dnsutils | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "sudo": {
+    "command": "sudo --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "kernel-headers": {
+    "command": "rpm -q kernel-headers | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "kernel-devel": {
+    "command": "rpm -q kernel-devel | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "python3.11-devel": {
+    "command": "rpm -q python3.11-devel | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "python3.11-pip": {
+    "command": "rpm -q python3.11-pip | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "python3.11-kerberos": {
+    "command": "rpm -q python3.11-kerberos | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "python3.11-cryptography": {
+    "command": "rpm -q python3.11-cryptography | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "gcc": {
+    "command": "gcc --version | awk 'NR==1' | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "gcc-c++": {
+    "command": "rpm -q gcc-c++ | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "bison": {
+    "command": "rpm -q bison | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "flex": {
+    "command": "rpm -q flex | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "patch": {
+    "command": "rpm -q patch | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
+  "gcc-toolset-14-gcc-c+": {
+    "command": "rpm -q gcc-toolset-14-gcc-c+ | awk '{match($0, /[0-9]+.[0-9]+.[0-9]+/, arr); if (arr[0]) print arr[0]}'"
+  },
 
-# Load JSON data
-try:
-    with open(json_file, "r") as f:
-        data = json.load(f)
-except FileNotFoundError:
-    print("\033[91m❌ Error: JSON file not found at {}\033[0m".format(json_file))  # Red text
-    exit(1)
-except json.JSONDecodeError:
-    print("\033[91m❌ Error: Invalid JSON format in {}\033[0m".format(json_file))  # Red text
-    exit(1)
-
-# Header
-print("\n\033[96m🛠  System Package Versions\033[0m")  # Cyan bold title
-print("=" * 40)
-
-# Iterate over each command in JSON
-for package, info in data.items():
-    cmd = info.get("command", "")
-
-    if not cmd:
-        print(f"\033[93m{package:<15} ⚠ No command found\033[0m")  # Yellow warning
-        continue
-
-    try:
-        # Execute command and capture output
-        result = subprocess.run(cmd, shell=True, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output = result.stdout.strip() or "\033[91mN/A\033[0m"  # Red if no output
-    except subprocess.CalledProcessError:
-        output = "\033[91m❌ Failed\033[0m"  # Red failure
-
-    # Print results with indentation for the version
-    print(f"\033[94m{package:<15} \033[92m→   {output}\033[0m")  # Indented version display
-
-# Final message
-print("=" * 40)
-print("\033[92m✅ Check completed.\033[0m\n")  # Green success message
+  "pip-modules": {
+    "command": "pip list | awk 'NR>=3'",
+    "multi_line_output": true
+  } 
+}
