@@ -1,12 +1,11 @@
-echo 2 | update-alternatives --config java
-
-There are 6 programs which provide 'java'.
-
-  Selection    Command
------------------------------------------------
- + 1           /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.432.b06-2.el8.x86_64/bin/java
-   2           /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.432.b06-2.el8.x86_64/jre/bin/java
-   3           /usr/lib/jvm/java-17-openjdk-17.0.14.0.7-3.el8.x86_64/bin/java
-*  4           /usr/lib/jvm/java-11-openjdk-11.0.25.0.9-2.el8.x86_64/bin/java
-   5           /usr/lib/jvm/java-21-openjdk-21.0.6.0.7-1.el8.x86_64/bin/java
-   6           /opt/graalvm/graalvm-jdk-21.0.1+12.1/bin/java
+{
+  "java_list": {
+    "command": "update-alternatives --query java | grep -E 'Alternative:' | awk '{print NR\" -> \"$2}'"
+  },
+  "java_version": {
+    "command": "java -version 2>&1 | awk -F '\"' 'NR==1{print $2}'"
+  },
+  "set_java_17": {
+    "command": "sudo update-alternatives --set java $(update-alternatives --query java | grep 'Alternative: /usr/lib/jvm/java-17-openjdk' | awk '{print $2}' | sort -V | tail -n1)"
+  }
+}
