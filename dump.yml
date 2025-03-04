@@ -4,37 +4,37 @@ on:
   workflow_dispatch:
     inputs:
       BUILD_BASE:
-        description: "BUILD_BASE (Build base image during the build)"
+        description: "Build base image during the build"
         required: false
         default: false
         type: boolean
       BUILD_AGENT:
-        description: "BUILD_AGENT (Build agent image during the build)"
+        description: "Build agent image during the build"
         required: false
         default: false
         type: boolean
       BUILD_TOOLS:
-        description: "BUILD_TOOLS (Build tools image during the build)"
+        description: "Build tools image during the build"
         required: false
         default: true
         type: boolean
       UNIT_TEST:
-        description: "RUN UNIT TEST"
+        description: "Run unit tests"
         required: true
         default: true
         type: boolean
       INTEGRATION_TEST:
-        description: "RUN INTEGRATION TEST"
+        description: "Run integration tests"
         required: true
         default: true
         type: boolean
       IMAGE_REPORT:
-        description: "GENERATE IMAGE REPORT"
+        description: "Generate image report"
         required: true
         default: true
         type: boolean
       CREATE_RELEASE:
-        description: "CREATE RELEASE NOTES"
+        description: "Create draft release notes"
         required: true
         default: true
         type: boolean
@@ -42,227 +42,194 @@ on:
 jobs:
   unit-test:
     if: ${{ inputs.UNIT_TEST }}
-    runs-on: [ self-hosted ]
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
-        repo:
-        # tools
-          - 'git'
-          - 'nodejs'
-          - 'ansible_client'
-      
+        repo: [ 'git', 'nodejs', 'ansible_client' ]
+
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+        uses: actions/checkout@v4
         with:
           clean: true
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Run unit tests
+        run: echo "Running unit tests for ${{ matrix.repo }}"
 
   unit-test-dashboard:
-    runs-on: [ self-hosted ]
+    runs-on: self-hosted
     needs: unit-test
-    if: ${{ always() && needs.unit-test.result != 'skipped' }}
+    if: ${{ needs.unit-test.result == 'success' }}
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
-          
+      - name: Run dashboard updates
+        run: echo "Updating unit test dashboard"
+
   build-base-image:
-    if: ${{ inputs.BUILD_BASE == true && ( always() && inputs.UNIT_TEST == false || needs.unit-test-dashboard.result == 'success') }}
-    needs: [unit-test-dashboard]
+    if: ${{ inputs.BUILD_BASE && (inputs.UNIT_TEST == false || needs.unit-test-dashboard.result == 'success') }}
+    needs: unit-test-dashboard
     strategy:
       matrix:
-        AGENT_TYPE: [jenkins]
-    runs-on: [self-hosted]
+        AGENT_TYPE: [ jenkins ]
+    runs-on: self-hosted
     outputs:
       IMAGE_TAG_BASE: ${{ steps.image_tag_out.outputs.imagetag }}
+
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+        uses: actions/checkout@v4
         with:
           clean: true
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Build base image
+        run: echo "Building base image for ${{ matrix.AGENT_TYPE }}"
 
   bump-base-images-in-git:
-    needs: [build-base-image]
-    if: always() && needs.build-base-image.result == 'success'
-    runs-on: [self-hosted]
+    needs: build-base-image
+    if: ${{ needs.build-base-image.result == 'success' }}
+    runs-on: self-hosted
     outputs:
       BUMPED_SHA_BASE: ${{ steps.bumped_sha_base_out.outputs.bumpedshabase }}
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-        with:
-          clean: true
-        
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
-          
+        uses: actions/checkout@v4
+
+      - name: Bump base images in Git
+        run: echo "Bumping base images in Git"
+
   build-agent-images:
-    needs: [bump-base-images-in-git]
-    if: ${{ inputs.BUILD_AGENT == true && ( always() && inputs.BUILD_BASE == false || needs.bump-base-images-in-git.result == 'success') }}
+    needs: bump-base-images-in-git
+    if: ${{ inputs.BUILD_AGENT && (inputs.BUILD_BASE == false || needs.bump-base-images-in-git.result == 'success') }}
     strategy:
       matrix:
-        AGENT_TYPE: [jenkins, scale-set-runner]
-    runs-on: [self-hosted]
+        AGENT_TYPE: [ jenkins, scale-set-runner ]
+    runs-on: self-hosted
     outputs:
       IMAGE_TAG_AGENT: ${{ steps.image_tag_out.outputs.imagetag }}
+
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-        with:
-          clean: true
-          
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+        uses: actions/checkout@v4
+
+      - name: Build agent images
+        run: echo "Building agent image for ${{ matrix.AGENT_TYPE }}"
 
   bump-agent-images-in-git:
-    needs: [build-agent-images, bump-base-images-in-git]
-    if: always() && needs.build-agent-images.result == 'success'
-    runs-on: [self-hosted]
+    needs: build-agent-images
+    if: ${{ needs.build-agent-images.result == 'success' }}
+    runs-on: self-hosted
     outputs:
       BUMPED_SHA_AGENT: ${{ steps.bumped_sha_agent_out.outputs.bumpedshaagent }}
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-        with:
-          clean: true
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Bump agent images in Git
+        run: echo "Bumping agent images in Git"
 
   build-tools-images:
     needs: bump-agent-images-in-git
-    if: ${{ inputs.BUILD_TOOLS == true && ( always() && inputs.BUILD_AGENT == false || needs.bump-agent-images-in-git.result == 'success') }}
+    if: ${{ inputs.BUILD_TOOLS && (inputs.BUILD_AGENT == false || needs.bump-agent-images-in-git.result == 'success') }}
     strategy:
       matrix:
-        AGENT_TYPE: [jenkins, scale-set-runner]
-        AGENT_TEAM: [bluemix]
-    runs-on: [self-hosted]
+        AGENT_TYPE: [ jenkins, scale-set-runner ]
+        AGENT_TEAM: [ bluemix ]
+    runs-on: self-hosted
     outputs:
       IMAGE_TAG_TOOLS: ${{ steps.image_tag_out.outputs.imagetag }}
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-        with:
-          clean: true
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Build tools images
+        run: echo "Building tools images for ${{ matrix.AGENT_TEAM }}"
 
   build-team-images:
     needs: build-tools-images
-    if: ${{ inputs.BUILD_TOOLS == true && ( always() && needs.build-tools-images.result == 'success' ) }}
+    if: ${{ needs.build-tools-images.result == 'success' }}
     strategy:
       matrix:
-        AGENT_TYPE: [jenkins, scale-set-runner]
-        AGENT_TEAM: [ads, fotf, fotf-sandbox]
-    runs-on: [self-hosted]
+        AGENT_TYPE: [ jenkins, scale-set-runner ]
+        AGENT_TEAM: [ ads, fotf, fotf-sandbox ]
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-        with:
-          clean: true
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Build team images
+        run: echo "Building team images for ${{ matrix.AGENT_TEAM }}"
 
   bump-all-tools-teams-images-in-git:
-    needs: [build-team-images, build-tools-images, bump-agent-images-in-git]
-    if: always() && needs.build-team-images.result == 'success' && needs.build-tools-images.result == 'success'
-    runs-on: [self-hosted]
+    needs: [ build-team-images, build-tools-images ]
+    if: ${{ needs.build-team-images.result == 'success' && needs.build-tools-images.result == 'success' }}
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-        with:
-          clean: true
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Bump all tools and team images in Git
+        run: echo "Bumping all tools and team images in Git"
 
   integration-test-existing-image:
-    runs-on: [ self-hosted ]
-    needs: [bump-all-tools-teams-images-in-git]
-    if: ${{ inputs.INTEGRATION_TEST == true && ( always() && needs.bump-all-tools-teams-images-in-git.result == 'success' ) }}
+    runs-on: self-hosted
+    needs: bump-all-tools-teams-images-in-git
+    if: ${{ inputs.INTEGRATION_TEST && needs.bump-all-tools-teams-images-in-git.result == 'success' }}
     continue-on-error: true
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
+      - name: Run integration tests
+        run: echo "Running integration tests"
 
   integration-test-existing-image-dashboard:
-    runs-on: [ self-hosted ]
+    runs-on: self-hosted
     needs: integration-test-existing-image
-    if: ${{ always() && needs.integration-test-existing-image.result != 'skipped' }} 
+    if: ${{ needs.integration-test-existing-image.result == 'success' }}
 
     steps:
       - name: Checkout code
-        uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
+        uses: actions/checkout@v4
 
-      - name: Run custom unit test tools action
-        run: |
-          echo "Works!"
-          
+      - name: Update integration test dashboard
+        run: echo "Updating integration test dashboard"
+
   create-report:
-    runs-on: [ self-hosted ]
+    runs-on: self-hosted
     needs: integration-test-existing-image-dashboard
-    if: ${{ always() && needs.integration-test-existing-image-dashboard.result != 'skipped' && inputs.IMAGE_REPORT == true }} 
+    if: ${{ inputs.IMAGE_REPORT && needs.integration-test-existing-image-dashboard.result == 'success' }}
 
     steps:
-    - name: Checkout code
-      uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-      with:
-        fetch-depth: 0
-        submodules: true
-        
-    - name: Get tag version
-      id: image_tag_out
-      run: |
-        TAG=$(grep version: galaxy.yml  | awk '{ print $2}' | tr -d '\r')
-        echo "TAG=$TAG" >> $GITHUB_ENV
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
 
-    - name: Run custom unit test tools action
-      run: |
-        echo "Works!"
+      - name: Generate image report
+        run: echo "Generating image report"
 
   create-release:
     runs-on: self-hosted
-    needs: [integration-test-existing-image-dashboard, unit-test-dashboard]
-    if: ${{ inputs.CREATE_RELEASE == true && ( always() && inputs.integration-test-existing-image-dashboard == false && inputs.unit-test-dashboard == false) }}
+    needs: [ integration-test-existing-image-dashboard, unit-test-dashboard ]
+    if: ${{ inputs.CREATE_RELEASE && needs.integration-test-existing-image-dashboard.result == 'success' && needs.unit-test-dashboard.result == 'success' }}
+
     steps:
-    
-    - name: Checkout code
-      uses: devsecops/github-marketplace-actions/.github/actions/actions/checkout@v1
-      with:
-        fetch-depth: 0
-        submodules: true
-        
-    - name: Run custom unit test tools action
-      run: |
-        echo "Works!"
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Create draft release notes
+        run: echo "Creating draft release notes in GitHub"
