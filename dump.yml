@@ -1,2 +1,35 @@
+RELEASES=$(curl -s -H "Authorization: Bearer xxx" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://github.com/api/v3/repos/devsecops/agent_build/releases")
+
+        # Extract latest pre-release
+        LATEST_PRERELEASE=$(echo "$RELEASES" | jq -r '[.[] | select(.prerelease == true)][0].tag_name')
+        echo "$LATEST_PRERELEASE"
+
+        # Extract latest official release
         LATEST_RELEASE=$(echo "$RELEASES" | jq -r '[.[] | select(.prerelease == false && .draft == false)][0].tag_name')
         echo "$LATEST_RELEASE"
+
+        # If no latest release is found, use pre-release (fallback)
+        if [ "$LATEST_RELEASE" == "null" ] || [ -z "$LATEST_RELEASE" ]; then
+          echo "No official release found. Using pre-release: $LATEST_PRERELEASE"
+          echo "FINAL_VERSION=$LATEST_PRERELEASE"
+          exit 0
+        fi
+
+        # If no pre-release is found, use latest release
+        if [ "$LATEST_PRERELEASE" == "null" ] || [ -z "$LATEST_PRERELEASE" ]; then
+          echo "No pre-release found. Using latest official release: $LATEST_RELEASE"
+          echo "FINAL_VERSION=$LATEST_RELEASE"
+          exit 0
+        fi
+
+        # Compare versions (assuming semantic versioning)
+        if printf '%s\n%s\n' "$LATEST_PRERELEASE" "$LATEST_RELEASE" | sort -V | tail -n 1 | grep -q "$LATEST_PRERELEASE"; then
+          echo "Using pre-release: $LATEST_PRERELEASE (newer than $LATEST_RELEASE)"
+          PREVIOUS_TAG=$(echo "$LATEST_PRERELEASE" | awk -F'.' '{print $1 "." $2 "." $3}')
+          echo "PREVIOUS_TAG=$PREVIOUS_TAG"
+        else
+          PREVIOUS_TAG=$(echo "$LATEST_RELEASE" | awk -F'.' '{print $1 "." $2 "." $3}')
+          echo "PREVIOUS_TAG=$PREVIOUS_TAG"
+        fi
