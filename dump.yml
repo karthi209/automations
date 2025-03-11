@@ -1,49 +1,52 @@
+import jenkins.model.Jenkins
+import com.cloudbees.plugins.credentials.*
+import com.cloudbees.plugins.credentials.common.*
+import com.cloudbees.plugins.credentials.domains.*
 import com.cloudbees.hudson.plugins.folder.Folder
 
-def printMyCreds(jenkinsCredentials)
-{
-  for (c in jenkinsCredentials) {
-    if ( c.scope.toString() != "GLOBAL" )
-    {
-      println( ( "########## Scope: " + c.scope ) )
-    }
-    if ( c.properties.privateKeySource )
-    {
-      println( "ID: " + c.id + ", UserName: " + c.username + ", Passphrase: " + c.passphrase + ", Private Key: \n" + c.getPrivateKey() )
-    }
-    if ( c.properties.secretBytes )
-    {
-      println( "ID: " + c.id + ", File Name: " + c.fileName + ", Contents: \n" + new String(com.cloudbees.plugins.credentials.SecretBytes.fromString(c.secretBytes.toString()).getPlainData()) )
-    }
-    if ( c.properties.secret )
-    {
-      println( "ID: " + c.id + ", Description: " + c.description + ", Secret: " + c.secret )
-    }
-    if ( c.properties.appID )
-    {
-      println( "ID: " + c.id + ", appID: " + c.appID + ", API URI: " + c.apiUri + ", Owner: " + c.owner + ", Private Key: \n" + c.privateKey )
-    }
-    else if ( c.properties.password )
-    {
-      println( "ID: " + c.id + ", UserName: " + c.username + ", Password: " + c.password + ", Username Secret: " + c.usernameSecret )
-    }
-  }
-}
+// Function to retrieve credentials from a specific folder
+def getCredentialsFromFolder(folderPath) {
+    def jenkins = Jenkins.instance
+    def folder = jenkins
 
-def allJenkinsItems = Jenkins.getInstance().getItems();
-for (currentJenkinsItem in allJenkinsItems)
-{
-    if(currentJenkinsItem instanceof Folder)
-    {
-      println( ("###### Diving into Folder: " + currentJenkinsItem.name) )
-      jenkinsCredentials = com.cloudbees.plugins.credentials.CredentialsProvider.lookupCredentials(
-        com.cloudbees.plugins.credentials.Credentials.class,
-        (hudson.model.ItemGroup) currentJenkinsItem
-      );
-      printMyCreds(jenkinsCredentials)
+    // Traverse the folder hierarchy
+    for (String folderName : folderPath.split("/")) {
+        folder = folder.getItem(folderName)
+        if (!(folder instanceof Folder)) {
+            println("Folder '${folderName}' not found or is not a valid Jenkins folder.")
+            return
+        }
+    }
+
+    // Fetch credentials available in this specific folder
+    def credentials = CredentialsProvider.lookupCredentials(
+        Credentials.class,
+        folder,
+        null,
+        null
+    )
+
+    // Print credentials details
+    if (credentials.isEmpty()) {
+        println("No credentials found in folder: ${folderPath}")
+    } else {
+        println("##### Credentials in Folder: ${folderPath} #####")
+        credentials.each { cred ->
+            if (cred instanceof StandardUsernamePasswordCredentials) {
+                println("ID: ${cred.id}, Username: ${cred.username}")
+            } else if (cred instanceof StringCredentials) {
+                println("ID: ${cred.id}, Secret: ${cred.secret.toString()}")
+            } else if (cred instanceof FileCredentials) {
+                println("ID: ${cred.id}, File Name: ${cred.fileName}")
+            } else if (cred instanceof BasicSSHUserPrivateKey) {
+                println("ID: ${cred.id}, Username: ${cred.username}, Private Key: \n${cred.privateKey}")
+            }
+        }
     }
 }
 
-println( ("###### GLOBAL CREDENTIALS: ") )
-jenkinsCredentials=com.cloudbees.plugins.credentials.SystemCredentialsProvider.getInstance().getCredentials()
-printMyCreds(jenkinsCredentials)
+// 🔹 Change this to your target folder path
+def targetFolderPath = "folder1/folder2"
+
+// Fetch credentials from the specified folder
+getCredentialsFromFolder(targetFolderPath)
