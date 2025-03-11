@@ -1,11 +1,36 @@
-import com.cloudbees.plugins.credentials.Credentials
+import jenkins.model.Jenkins
+import com.cloudbees.hudson.plugins.folder.Folder
 import com.cloudbees.plugins.credentials.CredentialsProvider
 import com.cloudbees.plugins.credentials.domains.Domain
-import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl
-import com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl
-import com.cloudbees.plugins.credentials.impl.BasicSSHUserPrivateKey
-import org.jenkinsci.plugins.plaincredentials.StringCredentials
-import org.jenkinsci.plugins.plaincredentials.FileCredentials
-import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials
 import com.cloudbees.plugins.credentials.common.StandardCredentials
-import jenkins.model.Jenkins
+import com.cloudbees.plugins.credentials.impl.FileCredentialsImpl
+import java.nio.charset.StandardCharsets
+
+// Set the full folder path and credential ID
+def folderPath = "zmigration/dnp2"  // Update with your folder's path
+def credentialId = "YOUR_SECRET_FILE_CREDENTIAL_ID"  // Update with your credential ID
+
+// Get the folder
+def folder = Jenkins.instance.getItemByFullName(folderPath, Folder)
+if (!folder) {
+    println "Folder not found: ${folderPath}"
+    return
+}
+
+// Fetch credentials from the folder's credential store
+def lookupCredentials = CredentialsProvider.lookupCredentials(
+    StandardCredentials.class,
+    folder,
+    null,
+    null
+)
+
+// Find the specific secret file credential
+def secretFile = lookupCredentials.find { it.id == credentialId } as FileCredentialsImpl
+
+if (secretFile) {
+    def fileContent = secretFile.content.text
+    println "Secret File Content:\n${fileContent}"
+} else {
+    println "Secret file credential not found in folder ${folderPath}."
+}
