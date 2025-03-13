@@ -1,1 +1,2 @@
-dnf install -y --allowerasing {{ java_package }}*{{ java_package_version }}* {{ java_force_installonly }} --setopt=tsflags=nodocs --setopt=exclude='*fastdebug* *slowdebug* *x86_64* *demo* *javadoc* *javadoc-zip* *jmods* *src* *static-libs*' --disableexcludes=all
+rpm -qa --queryformat '%{SIZE}\t%{NAME}\n' | awk '{printf "%.6f GB\t%s\n", $1/1024/1024/1024, $2}' | sort -n
+dnf repoquery --installed --qf '%{size}\t%{name}' | awk '{printf "%.6f GB\t%s\n", $1/1024/1024/1024, $2}' | sort -n
