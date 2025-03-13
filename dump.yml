@@ -1,2 +1,9 @@
-rpm -qa --queryformat '%{SIZE}\t%{NAME}\n' | awk '{printf "%.6f GB\t%s\n", $1/1024/1024/1024, $2}' | sort -n
-dnf repoquery --installed --qf '%{size}\t%{name}' | awk '{printf "%.6f GB\t%s\n", $1/1024/1024/1024, $2}' | sort -n
+    - name: Install java
+      become: true
+      ansible.builtin.shell: "dnf install -y --allowerasing {{ java_package }}*{{ java_package_version }}* {{ java_force_installonly }} --disableexcludes=all"
+      changed_when: "'molecule-idempotence-notest' not in ansible_skip_tags"
+      when:
+        - not java_install_method == 'archive'
+      register: java_installed
+      args:
+        creates: "{{ java_home }}/bin/java"
