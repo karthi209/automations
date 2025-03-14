@@ -1,14 +1,185 @@
-- name: Install java
-  become: true
-  ansible.builtin.dnf:
-    name: "{{ java_package }}*{{ java_package_version }}*"
-    state: present
-    allowerasing: true
-    disable_excludes: all
-    install_weak_deps: "{{ java_force_installonly | default(true) }}"
-  when:
-    - not java_install_method == 'archive'
-  register: java_installed
-  args:
-    creates: "{{ java_home }}/bin/java"
-  changed_when: "'molecule-idempotence-notest' not in ansible_skip_tags"
+---
+- name: Running install_linux.yml
+  ansible.builtin.debug:
+    msg: "java_instance_name: {{ java_instance_name }}"
+
+- name: Setting the variables to use for install_linux.yml
+  ansible.builtin.set_fact:
+    java_home: "{{ devsecops.java[java_instance_name].home }}"
+    java_package: "{{ devsecops.java[java_instance_name].package_name }}"
+    java_package_version: "{{ devsecops.java[java_instance_name].package_version }}"
+    java_version: "{{ devsecops.java[java_instance_name].version }}"
+  when: not java_install_method == 'archive'
+
+- name: Setting the variables to use for install_linux.yml when install_method is archive
+  ansible.builtin.set_fact:
+    java_version: "{{ devsecops.java[java_instance_name].version }}"
+  when: java_install_method == 'archive'
+
+- name: Tasks for the default java_action - install
+  block:
+    - name: Set force install if keep_old_versions is true
+      ansible.builtin.set_fact:
+        java_force_installonly: "--setopt=installonlypkgs={{ java_package }}"
+      when:
+        - java_keep_old_versions is true
+        - not java_install_method == 'archive'
+
+    - name: Setting the variables to use for install_linux.yml
+      ansible.builtin.set_fact:
+        java_default_install_home: "{{ devsecops.java[java_default_install].home }}"
+
+    - name: Install java
+      become: true
+      ansible.builtin.shell: "dnf install -y --allowerasing {{ java_package }}*{{ java_package_version }}* {{ java_force_installonly }} --disableexcludes=all"
+      changed_when: "'molecule-idempotence-notest' not in ansible_skip_tags"
+      when:
+        - not java_install_method == 'archive'
+      register: java_installed
+      args:
+        creates: "{{ java_home }}/bin/java"
+
+    - name: Set-java-alternatives
+      include_tasks: alternatives.yml
+      vars:
+        java_set_alternatives: set
+      when: java_installed.changed
+
+    - name: Import certs to java keystore
+      include_tasks: java_import_certs.yml
+      loop: "{{ devsecops.java_cacerts.cert }}"
+      loop_control:
+        loop_var: java_cert
+      when: java_installed.changed
+
+    - name: "Template a file to /etc/profile.d/jdk.sh"
+      become: true
+      ansible.builtin.template:
+        src: jdk.sh.j2
+        dest: /etc/profile.d/jdk.{{ jdk_template }}
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - "sh"
+        - "csh"
+      loop_control:
+        loop_var: jdk_template
+      when:
+        - not java_install_method == 'archive'
+        - java_installed.changed
+
+    - name: Create a link to /usr/java/latest
+      become: true
+      ansible.builtin.shell: |
+        umask 022;
+        rm -rf /usr/java/latest
+        mkdir -p /usr/java
+        ln -sf {{ java_default_install_home }} /usr/java/latest
+      changed_when: "'molecule-idempotence-notest' not in ansible_skip_tags"
+
+    - name: Create a link to "/usr/lib/jvm/{{ java_install_type }}-{{ java_version }}"
+      become: true
+      ansible.builtin.shell: |
+        umask 022;
+        rm -rf /usr/lib/jvm/{{ java_install_type }}-{{ java_version }}
+        mkdir -p /usr/lib/jvm
+        ln -sf {{ java_home }} /usr/lib/jvm/{{ java_install_type }}-{{ java_version }}
+      changed_when: "'molecule-idempotence-notest' not in ansible_skip_tags"
+
+    - name: link for old version of java
+      become: true
+      ansible.builtin.file:
+        src: "{{ java_home }}"
+        dest: /usr/lib/jvm/java-1.8
+        mode: "0755"
+        force: yes
+        owner: root
+        group: root
+        state: link
+      when: "java_version is version('8', '<=')"
+
+  when: java_action == 'install'
+
+- name: Tasks for the java_action - uninstall
+  block:
+    - name: Uninstall java
+      ansible.builtin.shell: "yum remove -y {{ java_package }}*{{ java_package_version }}*"
+  when: java_action == 'uninstall'
+
+- name: Cleanup
+  include_tasks: "cleanup.yml"
+
+
+---
+devsecops:
+  rhel: ansible_distribution_major_version
+  java:
+    java_8_open_402:
+      home: "/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-2.el8.x86_64"
+      package_name: "java-1.8-devel"
+      package_version: "1.8.0.402"
+      product_family: "open"
+      version: '8'
+
+    java_8_jdk_oracle_371:
+      home: "/usr/lib/jvm/jdk-1.8-oracle-x64"
+      package_name: "jdk-1.8-devel"
+      package_version: "371"
+      product_family: "oracle"
+      version: '8'
+
+    java_11_openjdk_16:
+      home: "/usr/lib/jvm/java-11-openjdk-11.0.16.0.8-1.el8_6.x86_64"
+      package_name: "java-11-openjdk-devel"
+      package_version: "11.0.16"
+      product_family: "open"
+      version: '11'
+
+    java_11_jdk_open_17:
+      home: "/usr/lib/jvm/java-11-openjdk-11.0.17.0.8-2.el8_6.x86_64"
+      package_name: "java-11-openjdk-devel"
+      package_version: "11.0.17"
+      product_family: "open"
+      version: '11'
+
+    java_8_open_432:
+      home: "/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.432.b06-2.el8.x86_64"
+      package_name: "java-1.8.0-openjdk-devel"
+      package_version: "432"
+      product_family: "open"
+      version: '8'
+
+    java_11_jdk_open_25:
+      home: "/usr/lib/jvm/java-11-openjdk-11.0.25.0.9-2.el8.x86_64"
+      package_name: "java-11-openjdk-devel"
+      package_version: "11.0.25"
+      product_family: "open"
+      version: '11'
+
+    java_17_open:
+      home: "/usr/lib/jvm/java-17-openjdk-17.0.14.0.7-3.el8.x86_64"
+      package_name: "java-17-openjdk-devel"
+      package_version: "17.0"
+      product_family: "open"
+      version: '17'
+
+    java_21_open:
+      home: "/usr/lib/jvm/java-21-openjdk-21.0.6.0.7-1.el8.x86_64"
+      package_name: "java-21-openjdk-devel"
+      package_version: "21.0"
+      product_family: "open"
+      version: '21'
+
+    java_23_open:
+      home: "/usr/lib/jvm/java-23-openjdk-23.0.2.0.7-1.rolling.el8.x86_64"
+      package_name: "java-latest-openjdk-devel"
+      package_version: "23.0"
+      product_family: "open"
+      version: '23'
+      
+# Insalling from archive, not yum
+    jre_11_18_minimal:
+      home: "/opt/jres/java-11-openjdk-11.0.18.0.10-1.portable.jre.el.x86_64"
+      version: '11'
+
