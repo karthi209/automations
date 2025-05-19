@@ -1,13 +1,22 @@
-# Common `tsflags` Values in `/etc/dnf/dnf.conf`
+name: Master Dispatcher
 
-| **Flag**      | **Corresponding RPM Flag**         | **Description** |
-|--------------|---------------------------------|----------------|
-| `nodocs`     | `RPMTRANS_FLAG_NODOCS`         | Prevents installation of documentation and man pages. |
-| `noscripts`  | `RPMTRANS_FLAG_NOSCRIPTS`      | Skips running install/uninstall scripts in RPM packages. |
-| `test`       | `RPMTRANS_FLAG_TEST`           | Simulates the installation without making actual changes. |
-| `notriggers` | `RPMTRANS_FLAG_NOTRIGGERS`     | Disables script triggers that execute during RPM transactions. |
-| `justdb`     | `RPMTRANS_FLAG_JUSTDB`         | Updates only the RPM database without affecting installed files. |
-| `nocontexts` | `RPMTRANS_FLAG_NOCONTEXTS`     | Prevents restoring SELinux contexts on installed files. |
-| `nocaps`     | `RPMTRANS_FLAG_NOCAPS`         | Disables setting file capabilities during package installation. |
-| `nocrypto`   | `RPMTRANS_FLAG_NOFILEDIGEST`   | Skips file digest verification during package installation. |
-| `deploops`   | `RPMTRANS_FLAG_DEPLOOPS`       | Allows dependency loops (use with caution). |
+on:
+  workflow_dispatch:  # Can be triggered manually, or you can use push, schedule, etc.
+
+jobs:
+  trigger-downstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger workflow in Repo A
+        run: |
+          curl -X POST https://api.github.com/repos/org-or-user/repo-a/dispatches \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+          -d '{"event_type": "start_build", "client_payload": {"env": "production"}}'
+
+      - name: Trigger workflow in Repo B
+        run: |
+          curl -X POST https://api.github.com/repos/org-or-user/repo-b/dispatches \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+          -d '{"event_type": "start_tests", "client_payload": {"test_suite": "smoke"}}'
