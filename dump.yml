@@ -1,4 +1,4 @@
-name: Go Cross-Compile Test
+name: Go Toolchain Integrity Check
 
 on:
   push:
@@ -6,38 +6,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-go-build:
+  verify-go:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22.2'
 
-      - name: Create test Go file
+      - name: Run `go version` and `go env`
         run: |
-          cat <<EOF > main.go
-          package main
-          import (
-            "fmt"
-            "runtime"
-          )
-          func main() {
-            fmt.Println("Hello from Go!")
-            fmt.Println("Go version:", runtime.Version())
-            fmt.Println("GOOS:", runtime.GOOS)
-            fmt.Println("GOARCH:", runtime.GOARCH)
-          }
-          EOF
+          go version
+          go env
 
-      - name: Build for Linux AMD64
+      - name: Run standard library tests
+        run: go test std
+
+      - name: Create and run basic Go program
         run: |
-          GOOS=linux GOARCH=amd64 go build -v -o hello-linux main.go
-          file hello-linux
-
-      - name: Run binary
-        run: ./hello-linux
+          echo 'package main; import "fmt"; func main() { fmt.Println("Hello from Go check") }' > main.go
+          go build -o test-bin main.go
+          ./test-bin
