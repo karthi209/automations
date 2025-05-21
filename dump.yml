@@ -1,22 +1,43 @@
-name: Master Dispatcher
+name: Go Cross-Compile Test
 
 on:
-  workflow_dispatch:  # Can be triggered manually, or you can use push, schedule, etc.
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  trigger-downstream:
+  test-go-build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Trigger workflow in Repo A
-        run: |
-          curl -X POST https://api.github.com/repos/org-or-user/repo-a/dispatches \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-          -d '{"event_type": "start_build", "client_payload": {"env": "production"}}'
 
-      - name: Trigger workflow in Repo B
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.2'
+
+      - name: Create test Go file
         run: |
-          curl -X POST https://api.github.com/repos/org-or-user/repo-b/dispatches \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-          -d '{"event_type": "start_tests", "client_payload": {"test_suite": "smoke"}}'
+          cat <<EOF > main.go
+          package main
+          import (
+            "fmt"
+            "runtime"
+          )
+          func main() {
+            fmt.Println("Hello from Go!")
+            fmt.Println("Go version:", runtime.Version())
+            fmt.Println("GOOS:", runtime.GOOS)
+            fmt.Println("GOARCH:", runtime.GOARCH)
+          }
+          EOF
+
+      - name: Build for Linux AMD64
+        run: |
+          GOOS=linux GOARCH=amd64 go build -v -o hello-linux main.go
+          file hello-linux
+
+      - name: Run binary
+        run: ./hello-linux
