@@ -1,37 +1,8 @@
-import subprocess
-import os
-import pytest
-
-def run_command(cmd, check=True):
-    """Run shell command and return output."""
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if check and result.returncode != 0:
-        raise RuntimeError(f"Command failed: {cmd}\n{result.stderr}")
-    return result.stdout.strip()
-
-def test_go_version():
-    output = run_command("go version")
-    assert "go" in output
-    assert "1.22" in output  # Adjust based on your expected version
-
-def test_go_env_has_goroot_and_gopath():
-    output = run_command("go env")
-    assert "GOROOT=" in output
-    assert "GOPATH=" in output
-
-def test_go_build_simple_program(tmp_path):
-    src = tmp_path / "main.go"
-    src.write_text('package main\nimport "fmt"\nfunc main() { fmt.Println("ok") }')
-    binary = tmp_path / "testprog"
-    run_command(f"go build -o {binary} {src}")
-    result = subprocess.run([str(binary)], capture_output=True, text=True)
-    assert result.returncode == 0
-    assert "ok" in result.stdout
-
-@pytest.mark.skipif(os.getenv("CI") != "true", reason="std test is long; only run in CI")
-def test_go_test_std():
-    # This is a heavy test (~5 mins). Run it only in CI or when explicitly desired.
-    output = run_command("go test std", check=False)
-    assert "FAIL" not in output
-    assert "panic" not in output
-    assert "SIGSEGV" not in output
+- name: Add Adoptium YUM repository
+  ansible.builtin.yum_repository:
+    name: Adoptium
+    description: Adoptium
+    baseurl: "https://packages.adoptium.net/artifactory/rpm/{{ ansible_facts['os_family'] | lower | regex_replace('redhat', 'centos') }}/$releasever/$basearch"
+    gpgcheck: yes
+    gpgkey: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    enabled: yes
