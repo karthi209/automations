@@ -1,8 +1,11 @@
-- name: Add Adoptium YUM repository
-  ansible.builtin.yum_repository:
-    name: Adoptium
-    description: Adoptium
-    baseurl: "https://packages.adoptium.net/artifactory/rpm/{{ ansible_facts['os_family'] | lower | regex_replace('redhat', 'centos') }}/$releasever/$basearch"
-    gpgcheck: yes
-    gpgkey: https://packages.adoptium.net/artifactory/api/gpg/key/public
-    enabled: yes
+# Uncomment and change the distribution name if you are not using CentOS/RHEL/Fedora
+# DISTRIBUTION_NAME=centos
+
+cat <<EOF > /etc/yum.repos.d/adoptium.repo
+[Adoptium]
+name=Adoptium
+baseurl=https://packages.adoptium.net/artifactory/rpm/${DISTRIBUTION_NAME:-$(. /etc/os-release; echo $ID)}/\$releasever/\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.adoptium.net/artifactory/api/gpg/key/public
+EOF
