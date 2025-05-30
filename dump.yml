@@ -1,6 +1,155 @@
-Run echo "Storing trigger time..."
-Storing trigger time...
-Preparing dispatch payload...
-Dispatching to .github/workflows/aks.yml on branch release/dynamic_runners
-❌ Dispatch failed with status 422
-Error: Process completed with exit code 1.
+name: Trigger test jobs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  trigger-downstream:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gha-aks-uc3-java
+            url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-java/actions
+            workflow_path: .github/workflows/aks.yml
+            branch: release/dynamic_runners
+            inputs: |
+              {
+                "operation": "build",
+                "runner-label": "latest"
+              }
+
+          - name: gha-aks-uc3-node
+            url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-node/actions
+            workflow_path: .github/workflows/deploy.yml
+            branch: release/new_feature
+            inputs: |
+              {
+                "operation": "deploy",
+                "runner-label": "staging"
+              }
+
+    steps:
+      - name: Generate dispatch ID
+        id: context
+        run: |
+          DISPATCH_ID="${{ github.run_id }}-${{ matrix.name }}-$(date +%s)"
+          echo "dispatch_id=$DISPATCH_ID" >> $GITHUB_OUTPUT
+
+      - name: Get workflow ID for ${{ matrix.name }}
+        id: get_workflow_id
+        run: |
+          WORKFLOW_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+            ${{ matrix.url }}/workflows \
+            | jq -r --arg path "${{ matrix.workflow_path }}" '.workflows[] | select(.path == $path) | .id')
+
+          if [[ -z "$WORKFLOW_ID" ]]; then
+            echo "❌ Could not find workflow ID for ${{ matrix.workflow_path }}"
+            exit 1
+          fi
+
+          echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+
+      - name: Trigger ${{ matrix.name }} workflow
+        id: trigger
+        run: |
+          echo "Storing trigger time..."
+          echo "trigger_time=$(date --utc +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+          DISPATCH_ID="${{ steps.context.outputs.dispatch_id }}"
+          INPUTS_JSON='${{ matrix.inputs }}'
+
+          # Merge dispatch_id into inputs JSON correctly
+          PAYLOAD=$(jq -nc --arg ref "${{ matrix.branch }}" --argjson inputs "$INPUTS_JSON" --arg dispatch_id "$DISPATCH_ID" \
+            '{ref: $ref, inputs: ($inputs + {dispatch_id: $dispatch_id})}')
+
+          echo "Dispatching to workflow ID ${{ steps.get_workflow_id.outputs.workflow_id }} on branch ${{ matrix.branch }}"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST ${{ matrix.url }}/workflows/${{ steps.get_workflow_id.outputs.workflow_id }}/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+            -d "$PAYLOAD")
+
+          if [[ "$RESPONSE" != "204" ]]; then
+            echo "❌ Dispatch failed with status $RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Dispatch successful. Waiting for workflow to appear..."
+          sleep 30
+
+      - name: Find ${{ matrix.name }} workflow run
+        id: find_run
+        run: |
+          echo "Searching for workflow runs triggered after ${{ steps.trigger.outputs.trigger_time }}..."
+          WORKFLOW_ID=${{ steps.get_workflow_id.outputs.workflow_id }}
+          REPO_URL=${{ matrix.url }}
+          TRIGGER_TIME="${{ steps.trigger.outputs.trigger_time }}"
+
+          for i in {1..12}; do
+            RUN=$(curl -s -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+              "${REPO_URL}/workflows/${WORKFLOW_ID}/runs?branch=${{ matrix.branch }}&event=workflow_dispatch" \
+              | jq -r --arg ts "$TRIGGER_TIME" '
+                .workflow_runs
+                | map(select(.created_at > $ts))
+                | sort_by(.created_at)
+                | reverse
+                | .[0]')
+
+            RUN_ID=$(echo "$RUN" | jq -r '.id // empty')
+            STATUS=$(echo "$RUN" | jq -r '.status // empty')
+
+            if [[ -n "$RUN_ID" ]]; then
+              echo "Found run: $RUN_ID with status: $STATUS"
+              echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+              break
+            fi
+
+            echo "Not found yet. Retrying in 30s..."
+            sleep 30
+          done
+
+          if [[ -z "$RUN_ID" ]]; then
+            echo "❌ Failed to find the triggered workflow run"
+            exit 1
+          fi
+
+      - name: Wait for ${{ matrix.name }} run to complete
+        id: wait
+        run: |
+          RUN_ID=${{ steps.find_run.outputs.run_id }}
+          REPO_URL=${{ matrix.url }}
+
+          echo "Waiting for run $RUN_ID to complete..."
+
+          for i in {1..60}; do
+            RESP=$(curl -s -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+              "${REPO_URL}/runs/$RUN_ID")
+
+            STATUS=$(echo "$RESP" | jq -r '.status')
+            CONCLUSION=$(echo "$RESP" | jq -r '.conclusion')
+
+            echo "Status: $STATUS | Conclusion: $CONCLUSION"
+            if [[ "$STATUS" == "completed" ]]; then
+              echo "conclusion=$CONCLUSION" >> $GITHUB_OUTPUT
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [[ "$STATUS" != "completed" ]]; then
+            echo "❌ Timed out waiting for workflow to complete"
+            exit 1
+          fi
+
+      - name: Report result for ${{ matrix.name }}
+        run: |
+          conclusion="${{ steps.wait.outputs.conclusion }}"
+          if [[ "$conclusion" == "success" ]]; then
+            echo "✅ ${{ matrix.name }} workflow succeeded." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ ${{ matrix.name }} workflow failed: $conclusion" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
