@@ -13,53 +13,77 @@ jobs:
           - name: gha-aks-uc3-java
             url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-java/actions
             workflow_path: .github/workflows/aks.yml
+            branch: release/dynamic_runners
+            inputs: |
+              {
+                "operation": "build",
+                "runner-label": "latest"
+              }
+
           - name: gha-aks-uc3-node
             url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-node/actions
             workflow_path: .github/workflows/deploy.yml
-          # ➕ Add more jobs by adding more entries here
+            branch: release/new_feature
+            inputs: |
+              {
+                "operation": "deploy",
+                "runner-label": "staging"
+              }
 
     steps:
+      - name: Generate dispatch ID
+        id: context
+        run: |
+          DISPATCH_ID="${{ github.run_id }}-${{ matrix.name }}-$(date +%s)"
+          echo "dispatch_id=$DISPATCH_ID" >> $GITHUB_OUTPUT
+
       - name: Trigger ${{ matrix.name }} workflow
         id: trigger
         run: |
           echo "Storing trigger time..."
           echo "trigger_time=$(date --utc +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-          echo "Triggering ${{ matrix.name }} workflow..."
-          curl -s -X POST ${{ matrix.url }}/workflows/$(basename ${{ matrix.workflow_path }})/dispatches \
+          echo "Preparing dispatch payload..."
+          PAYLOAD=$(jq -nc \
+            --arg ref "${{ matrix.branch }}" \
+            --argjson inputs "$(echo '${{ matrix.inputs }}' | jq '. + {dispatch_id: "${{ steps.context.outputs.dispatch_id }}"}')" \
+            '{ref: $ref, inputs: $inputs}')
+
+          echo "Dispatching to ${{ matrix.workflow_path }} on branch ${{ matrix.branch }}"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST ${{ matrix.url }}/workflows/$(basename ${{ matrix.workflow_path }})/dispatches \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-            -d '{
-              "ref":"release/dynamic_runners",
-              "inputs": {
-                "operation": "build",
-                "runner-label": "latest"
-              }
-            }'
+            -d "$PAYLOAD")
 
-          echo "Triggered workflow. Waiting a bit for it to register..."
+          if [[ "$RESPONSE" != "204" ]]; then
+            echo "❌ Dispatch failed with status $RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Dispatch successful. Waiting for workflow to appear..."
           sleep 30
 
       - name: Find ${{ matrix.name }} workflow run
         id: find_run
         run: |
-          echo "Fetching workflow ID for ${{ matrix.name }}"
+          echo "Getting workflow ID..."
           WORKFLOW_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
             ${{ matrix.url }}/workflows \
             | jq -r --arg path "${{ matrix.workflow_path }}" '.workflows[] | select(.path == $path) | .id')
 
           echo "Workflow ID: $WORKFLOW_ID"
 
-          echo "Looking for the triggered run..."
+          echo "Searching for the triggered run..."
           for i in {1..12}; do
             RUN=$(curl -s -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-              "${{ matrix.url }}/workflows/$WORKFLOW_ID/runs?branch=release/dynamic_runners&event=workflow_dispatch" \
+              "${{ matrix.url }}/workflows/$WORKFLOW_ID/runs?branch=${{ matrix.branch }}&event=workflow_dispatch" \
               | jq -r --arg ts "${{ steps.trigger.outputs.trigger_time }}" '
-                .workflow_runs
-                | map(select(.created_at > $ts))
-                | sort_by(.created_at)
-                | reverse
-                | .[0]')
+                  .workflow_runs
+                  | map(select(.created_at > $ts))
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[0]')
 
             RUN_ID=$(echo "$RUN" | jq -r '.id // empty')
             STATUS=$(echo "$RUN" | jq -r '.status // empty')
@@ -79,7 +103,7 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for ${{ matrix.name }} workflow to complete
+      - name: Wait for ${{ matrix.name }} run to complete
         id: wait
         run: |
           run_id=${{ steps.find_run.outputs.run_id }}
