@@ -1,12 +1,64 @@
-     - name: Test AKS node build and deploy
-        run: |
-          curl -X POST https://github.com/api/v3/repos/test/gha-aks-uc3-nodea/actions/workflows/aks.yml/dispatches \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-          -d '{
-            "ref":"release/dynamic_runners",
-            "inputs": {
-              "operation": "build", 
-              "runner-label": "staging"
-            }
-          }'
+- name: Trigger AKS node build and deploy
+  id: trigger_workflow
+  run: |
+    WORKFLOW_URL="https://api.github.com/repos/test/gha-aks-uc3-nodea/actions/workflows/aks.yml/dispatches"
+    TRIGGER_RESPONSE=$(curl -s -X POST "$WORKFLOW_URL" \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+      -d '{
+        "ref":"release/dynamic_runners",
+        "inputs": {
+          "operation": "build", 
+          "runner-label": "staging"
+        }
+      }')
+
+    echo "Workflow dispatch triggered."
+    echo "Waiting 10 seconds for workflow to start..."
+    sleep 10
+
+- name: Get latest workflow run ID
+  id: get_run_id
+  run: |
+    # Get latest run for the specified workflow file on the branch
+    RUN_ID=$(curl -s \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+      "https://api.github.com/repos/test/gha-aks-uc3-nodea/actions/runs?branch=release/dynamic_runners&event=workflow_dispatch" \
+      | jq '.workflow_runs[] | select(.name == "aks") | .id' | head -n1)
+
+    echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+    echo "Found run ID: $RUN_ID"
+
+- name: Wait for workflow run to complete
+  id: wait_for_completion
+  run: |
+    run_id=${{ steps.get_run_id.outputs.run_id }}
+    echo "Waiting for workflow run $run_id to complete..."
+
+    status="in_progress"
+    conclusion=""
+
+    while [[ "$status" != "completed" ]]; do
+      response=$(curl -s \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+        "https://api.github.com/repos/test/gha-aks-uc3-nodea/actions/runs/$run_id")
+
+      status=$(echo "$response" | jq -r '.status')
+      conclusion=$(echo "$response" | jq -r '.conclusion')
+
+      echo "Current status: $status, conclusion: $conclusion"
+      sleep 10
+    done
+
+    echo "conclusion=$conclusion" >> $GITHUB_OUTPUT
+
+- name: Report result and fail if needed
+  run: |
+    if [[ "${{ steps.wait_for_completion.outputs.conclusion }}" != "success" ]]; then
+      echo "❌ AKS workflow failed" >> $GITHUB_STEP_SUMMARY
+      exit 1
+    else
+      echo "✅ AKS workflow succeeded" >> $GITHUB_STEP_SUMMARY
+    fi
