@@ -13,7 +13,18 @@ jobs:
           - name: gha-aks-uc3-java
             url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-java/actions
             workflow_path: .github/workflows/aks.yml
-          # ➕ Add more jobs by adding more entries here
+            branch: release/dynamic_runners
+            inputs:
+              operation: build
+              runner-label: latest
+          # ➕ Add more jobs by adding more entries here, example:
+          # - name: another-job
+          #   url: https://github.kp.org/api/v3/repos/CSG/another-repo/actions
+          #   workflow_path: .github/workflows/another.yml
+          #   branch: main
+          #   inputs:
+          #     operation: test
+          #     runner-label: ubuntu-latest
 
     steps:
       - name: Trigger ${{ matrix.name }} workflow
@@ -21,17 +32,20 @@ jobs:
         run: |
           echo "Storing trigger time..."
           echo "trigger_time=$(date --utc +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
-          echo "Triggering ${{ matrix.name }} workflow..."
+          echo "Triggering ${{ matrix.name }} workflow on branch ${{ matrix.branch }}..."
+
+          # Convert inputs from matrix to JSON string
+          inputs_json=$(jq -n --argjson inputs "${{ toJson(matrix.inputs) }}" '$inputs')
+
           curl -s -X POST ${{ matrix.url }}/workflows/$(basename ${{ matrix.workflow_path }})/dispatches \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-            -d '{
-              "ref":"release/dynamic_runners",
-              "inputs": {
-                "operation": "build",
-                "runner-label": "latest"
-              }
-            }'
+            -d @- <<EOF
+          {
+            "ref": "${{ matrix.branch }}",
+            "inputs": $inputs_json
+          }
+          EOF
           echo "Triggered workflow. Waiting a bit for it to register..."
           sleep 30
       - name: Find ${{ matrix.name }} workflow run
@@ -45,7 +59,7 @@ jobs:
           echo "Looking for the triggered run..."
           for i in {1..12}; do
             RUN=$(curl -s -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
-              "${{ matrix.url }}/workflows/$WORKFLOW_ID/runs?branch=release/dynamic_runners&event=workflow_dispatch" \
+              "${{ matrix.url }}/workflows/$WORKFLOW_ID/runs?branch=${{ matrix.branch }}&event=workflow_dispatch" \
               | jq -r --arg ts "${{ steps.trigger.outputs.trigger_time }}" '
                 .workflow_runs
                 | map(select(.created_at > $ts))
