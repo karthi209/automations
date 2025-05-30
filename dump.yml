@@ -1,9 +1,12 @@
-Updating Subscription Management repositories.
-Unable to read consumer identity
-
-This system is not registered with an entitlement server. You can use subscription-manager to register.
-
-Adoptium                                                                                                                                                 31 kB/s |  35 kB     00:01    
-Errors during downloading metadata for repository 'adoptium':
-  - Status code: 400 for https://jfrog-prod-usw2-shared-oregon-main.s3.us-west-2.amazonaws.com/aol-adoptium/filestore/9f/9fc38c5a13abf4026d50ce7cb8569400a065ce64?response-content-disposition=attachment%3Bfilename%3D%229fc38c5a13abf4026d50ce7cb8569400a065ce64-filelists.xml.gz%22&response-content-type=application%2Fx-gzip&X-Artifactory-username=anonymous&X-Artifactory-repoType=local&X-Artifactory-repositoryKey=rpm&X-Artifactory-originPackageType=yum&X-Artifactory-packageType=yum&X-Artifactory-artifactPath=rhel%2F8%2Fx86_64%2Frepodata%2F9fc38c5a13abf4026d50ce7cb8569400a065ce64-filelists.xml.gz&X-Artifactory-originProjectKey=temurin&X-Artifactory-projectKey=temurin&X-Artifactory-originRepoType=local&X-Artifactory-originRepositoryKey=rpm&x-jf-traceId=265da8f80b2a19a5955fa356c4a1d8aa&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEBUaCXVzLXdlc3QtMiJGMEQCIHBGf0e2s6%2BAw6Oqz88mmE0ClzphaZQXIItX6ydWP8mUAiAPhGIMu4bXGLyS%2F%2BYUlKYx9hQlqlzQM8cGZJU9RTuHkyqPBQjO%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAIaDDk5OTkzNDc5MDQxNCIML0VC4e%2BhfyH0co2PKuMEkIhuwE4gWmJEHxilaGlxi2FdlYpHMa4jC2pXbMBq%2FbaTZy0EvMNugM%2F1c0bIU7gJt%2BeUv%2FcM3KvRa%2FcZbUnfziuXvRBCXFxeId2AXJ%2BCqEufJV%2FfvLaphpU%2FsysE4gDsiNvi85CzDr9bZDatoqKjLO74V3FjimXi9Y%2B5vgwWTRPF7pWXjaiWOAQlTx2n5cdmzmfoYeW0Rog42poX8pHd6yCTa29nYf9Oyyy8B3Jqr2wKnyfW1CfuWsWW3jJdzo2X6lQU0GYOc2Wk8VlX6LQOExIfnV%2BLAkdOPEVOJTsTkZBLpMPnU%2F6Z%2FTdYWL7PgaPz18PDmQl4fOC3%2BJCQMO1lE1tf6WaL3DSPFKUCr8JyakAz%2BGoz59GzILKkwMprx2llsVZUp%2FHVj2kgkXm8M3fVesaWOassm94k%2B61yrrc0C2Drb0cREECEvwhGPI8dLBiige8vKBYWmeTbd6nCeXmCbHlso7%2FyugJCD43k2O7rRc87jWMmgr9tdmbiMJWQ5j8d5Nk3yqfgAVsn8uMdM9qBxcIvubEEIyG7U6Cgr3qi6dbUA%2BxdKm98tTgIaWurCpKkpRuwG%2Bh5dFRRlV7QrcNhWT%2F6nrXEUz2z0c10hILyLfDOjISGPGJXQuM7Owm79Oun2L0GFsnn7LQsH15bGi1JCWTruxTmBJONDJ7C71CKZ7wVS78hUPkcJk5cXfrjGhUrv2uSvE7UauNsBWv4aXLxRS2MOzGu7U289r5V6sLmzUgnaM2AZYnf1t16LDm8IsJctvjuj1N65vRFQbNxhlw6wZBZUif5PoAw0kWXywk0%2BRgMWBcwyN%2B6wQY6mwEihZZu7RLw06vhtzXkbw4AojVLBGbMtvDYyE1j19s7BTnuIDDwC%2Fns57NEO5zUnl1Lykd1BuXvxRQjZy5O1%2BEhf3l5WPX83vQ9laWyjBHGuTe6%2BAvNkdX8Uod%2F0ThhsPsz7fxSFlvne5EuqY%2BBYoIbTHqlzXCWQcR3TBxvUBzqsUqS47hNluY5k32BrTUjMGv2tztdTT8NY2d8eA%3D%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250522T055926Z&X-Amz-SignedHeaders=host&X-Amz-Credential=ASIA6RUGCBMHPOXWOWKK%2F20250522%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Expires=900&X-Amz-Signature=89557ebb7f2ff1151f18071d144319d44fff37b59125153e8223d0286fb282d7 (IP: 3.5.81.112)
-Error: Failed to download metadata for repo 'adoptium': Yum repo downloading error: Downloading error(s): repodata/9fc38c5a13abf4026d50ce7cb8569400a065ce64-filelists.xml.gz - Cannot download, all mirrors were already tried without success
+     - name: Test AKS node build and deploy
+        run: |
+          curl -X POST https://github.com/api/v3/repos/test/gha-aks-uc3-nodea/actions/workflows/aks.yml/dispatches \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.DISPATCH_TOKEN }}" \
+          -d '{
+            "ref":"release/dynamic_runners",
+            "inputs": {
+              "operation": "build", 
+              "runner-label": "staging"
+            }
+          }'
