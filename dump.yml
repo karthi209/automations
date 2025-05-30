@@ -11,7 +11,7 @@ jobs:
       matrix:
         include:
           - name: gha-aks-uc3-java
-            url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-java/actions
+            url: https://github.com/api/v3/repos/CSG/gha-aks-uc3-java/actions
             workflow_path: .github/workflows/aks.yml
             branch: release/dynamic_runners
             inputs: |
@@ -21,7 +21,7 @@ jobs:
               }
 
           - name: gha-aks-uc3-node
-            url: https://github.kp.org/api/v3/repos/CSG/gha-aks-uc3-node/actions
+            url: https://github.com/api/v3/repos/CSG/gha-aks-uc3-node/actions
             workflow_path: .github/workflows/deploy.yml
             branch: release/new_feature
             inputs: |
